@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Fullscreen D-train departure board for a Raspberry Pi display with fluid animations."""
+"""Fullscreen D-train departure board for a Raspberry Pi display with fluid animations and rounded cards."""
 
 import math
 import os
 import queue
+import socket
+import subprocess
 import threading
 import time
 import tkinter as tk
@@ -12,6 +14,7 @@ from datetime import datetime
 
 import requests
 from google.transit import gtfs_realtime_pb2
+from PIL import Image, ImageTk
 
 # ---- Configuration -------------------------------------------------------
 STATION_NAME = "Bay 50 St"
@@ -24,7 +27,7 @@ TRAIN_URL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-
 ALERT_URL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fall-alerts"
 WEATHER_URL = (
     "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s"
-    "&current=temperature_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit"
+    "&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m&temperature_unit=fahrenheit"
     % (LATITUDE, LONGITUDE)
 )
 TRAIN_REFRESH_MS = 30_000
@@ -41,14 +44,14 @@ WHITE = "#f5f8ff"
 MUTED = "#94aad0"
 DIM = "#4d6385"
 CYAN = "#00bfff"        # Deep Sky Blue
-LIGHT_BLUE = "#87cefa"   # Light Sky Blue
-BRIGHT_RED = "#ff3b30"   # Bright Red for urgent alerts
+LIGHT_BLUE = "#87cefa"    # Light Sky Blue
+BRIGHT_RED = "#ff3b30"    # Bright Red for urgent alerts
 ORANGE = "#ff6319"
 GREEN = "#38e6aa"
 AMBER = "#ffbf4d"
 
 # Uniform Separation Gap
-GAP = 10
+GAP = 12
 
 
 def weather_text(code):
@@ -70,6 +73,101 @@ def interpolate_color(color1_hex, color2_hex, factor):
     g = int(g1 + (g2 - g1) * factor)
     b = int(b1 + (b2 - b1) * factor)
     return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def truncate(text, max_len=24):
+    """Safely truncate strings to prevent text clipping on screen edges."""
+    return text if len(text) <= max_len else text[:max_len - 3] + "..."
+
+
+def get_ip_address():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except Exception:
+            return "N/A"
+
+
+def get_wifi_ssid():
+    try:
+        res = subprocess.run(["iwgetid", "-r"], capture_output=True, text=True, timeout=2)
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip()
+        res = subprocess.run(["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"], capture_output=True, text=True, timeout=2)
+        if res.returncode == 0:
+            for line in res.stdout.splitlines():
+                if line.startswith("yes:"):
+                    return line.split(":", 1)[1]
+        res = subprocess.run(["ip", "route", "show", "default"], capture_output=True, text=True, timeout=2)
+        if res.returncode == 0 and res.stdout.strip():
+            parts = res.stdout.split()
+            if "dev" in parts:
+                dev = parts[parts.index("dev") + 1]
+                return f"Connected ({dev})"
+    except Exception:
+        pass
+    return "Disconnected"
+
+
+class RoundedCard(tk.Canvas):
+    """Custom container widget that draws rounded rectangles with clean borders."""
+    def __init__(self, parent, bg=CARD, border_color=BORDER, radius=16, **kwargs):
+        super().__init__(parent, bg=parent.cget("bg"), highlightthickness=0, **kwargs)
+        self.bg_color = bg
+        self.border_color = border_color
+        self.radius = radius
+        self.bind("<Configure>", self._draw)
+
+    def config(self, cnf=None, **kwargs):
+        if 'bg' in kwargs:
+            self.bg_color = kwargs['bg']
+        elif cnf and 'bg' in cnf:
+            self.bg_color = cnf['bg']
+        super().config(cnf, **kwargs)
+        self._draw()
+
+    configure = config
+
+    def _draw(self, event=None):
+        self.delete("card_bg")
+        w = self.winfo_width()
+        h = self.winfo_height()
+        if w <= 1 or h <= 1:
+            return
+        r = self.radius
+        self._create_rounded_rect(1, 1, w - 1, h - 1, r, fill=self.bg_color, outline=self.border_color, width=2, tags="card_bg")
+        self.tag_lower("card_bg")
+
+    def _create_rounded_rect(self, x1, y1, x2, y2, r, **kwargs):
+        points = [
+            x1 + r, y1,
+            x1 + r, y1,
+            x2 - r, y1,
+            x2 - r, y1,
+            x2, y1,
+            x2, y1 + r,
+            x2, y1 + r,
+            x2, y2 - r,
+            x2, y2 - r,
+            x2, y2,
+            x2 - r, y2,
+            x2 - r, y2,
+            x1 + r, y2,
+            x1 + r, y2,
+            x1, y2,
+            x1, y2 - r,
+            x1, y2 - r,
+            x1, y1 + r,
+            x1, y1 + r,
+            x1, y1
+        ]
+        return self.create_polygon(points, smooth=True, **kwargs)
 
 
 class Dashboard(tk.Tk):
@@ -95,6 +193,10 @@ class Dashboard(tk.Tk):
         self.north_minutes = []
         self.south_minutes = []
 
+        # Network speed baseline tracking
+        self.last_rx_bytes, self.last_tx_bytes = self._get_total_net_bytes()
+        self.last_net_time = time.time()
+
         self._build_ui()
         self.bind("<Escape>", lambda _event: self.destroy())
         self.bind("<F11>", lambda _event: self.attributes("-fullscreen", not self.attributes("-fullscreen")))
@@ -114,23 +216,26 @@ class Dashboard(tk.Tk):
                         font=("DejaVu Sans", size, weight), **kwargs)
 
     def card(self, parent, color=CARD):
-        return tk.Frame(parent, bg=color, highlightbackground=BORDER, highlightthickness=2)
+        return RoundedCard(parent, bg=color, border_color=BORDER, radius=16)
 
     def _build_ui(self):
+        # Root frame handles the master padding around the entire screen
         root = tk.Frame(self, bg=BG)
         root.pack(fill="both", expand=True, padx=GAP, pady=GAP)
 
         root.grid_columnconfigure(0, weight=1, uniform="col")
         root.grid_columnconfigure(1, weight=1, uniform="col")
 
+        # Set up grid rows. Row 5 is expanded to let bottom cards stretch down to the footer.
         root.grid_rowconfigure(0, weight=0)  # Top Hero Header
         root.grid_rowconfigure(1, weight=0)  # Departures
         root.grid_rowconfigure(2, weight=0)  # Service Status (Ticker)
         root.grid_rowconfigure(3, weight=0)  # Weather
-        root.grid_rowconfigure(4, weight=0)  # Bottom 50/50 Row
-        root.grid_rowconfigure(5, weight=0)  # Footer Line
+        root.grid_rowconfigure(4, weight=0)  # Spacer
+        root.grid_rowconfigure(5, weight=1)  # Bottom 50/50 Row (Expanded vertically)
+        root.grid_rowconfigure(6, weight=0)  # Footer Line
 
-        # ---------------- 1. Connected Top Hero Header ----------------
+        # ---------------- 1. Connected Top Hero Header (Row 0) ----------------
         hero = self.card(root)
         hero.grid(row=0, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
         hero.grid_columnconfigure(0, weight=1)
@@ -139,14 +244,12 @@ class Dashboard(tk.Tk):
         hero_left = tk.Frame(hero, bg=CARD)
         hero_left.grid(row=0, column=0, sticky="w", padx=18, pady=8)
 
-        # Live Header Frame with Canvas Pulsing Indicator Dot
         live_frame = tk.Frame(hero_left, bg=CARD)
         live_frame.pack(anchor="w")
 
         self.live_canvas = tk.Canvas(live_frame, width=32, height=24, bg=CARD, highlightthickness=0)
         self.live_canvas.pack(side="left")
 
-        # Multi-layered concentric pulse rings (outer, inner, core)
         self.pulse_ring_outer = self.live_canvas.create_oval(0, 0, 0, 0, fill="", outline="", width=2)
         self.pulse_ring_inner = self.live_canvas.create_oval(0, 0, 0, 0, fill="", outline="", width=2)
         self.live_core = self.live_canvas.create_oval(12, 8, 20, 16, fill=CYAN, outline="")
@@ -154,7 +257,6 @@ class Dashboard(tk.Tk):
         self.live = self.label(live_frame, "LIVE DEPARTURES", 11, CYAN, "bold")
         self.live.pack(side="left")
 
-        # Clock Display
         clock_frame = tk.Frame(hero_left, bg=CARD)
         clock_frame.pack(anchor="w", pady=(1, 0))
 
@@ -177,7 +279,7 @@ class Dashboard(tk.Tk):
         self.label(hero_right, STATION_NAME, 26, WHITE, "bold").pack(anchor="e")
         self.label(hero_right, STATION_SUBTITLE, 15, MUTED, "bold").pack(anchor="e", pady=(4, 0))
 
-        # ---------------- 2. Train Departures Section ----------------
+        # ---------------- 2. Train Departures Section (Row 1) ----------------
         departures = tk.Frame(root, bg=BG)
         departures.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
         departures.grid_columnconfigure((0, 1), weight=1, uniform="dept")
@@ -185,7 +287,7 @@ class Dashboard(tk.Tk):
         self.north = self._departure_card(departures, 0, "Manhattan")
         self.south = self._departure_card(departures, 1, "Coney Island")
 
-        # ---------------- 3. Service Status (Fluid Wrapping Marquee) ----------------
+        # ---------------- 3. Service Status (Row 2) ----------------
         self.status_card = self.card(root, "#08202a")
         self.status_card.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
 
@@ -198,7 +300,6 @@ class Dashboard(tk.Tk):
         self.status_main = self.label(status_inner, "Checking service...", 26, WHITE, "bold")
         self.status_main.pack(anchor="w", pady=(2, 0))
 
-        # High-precision Canvas Ticker
         self.ticker_canvas = tk.Canvas(status_inner, bg="#08202a", highlightthickness=0, height=36)
         self.ticker_canvas.pack(fill="x", expand=True, pady=(4, 0))
 
@@ -214,7 +315,7 @@ class Dashboard(tk.Tk):
         if bbox:
             self.ticker_text_width = bbox[2] - bbox[0]
 
-        # ---------------- 4. Weather Section (Full-Width) ----------------
+        # ---------------- 4. Weather Section (Row 3) ----------------
         weather = self.card(root, CARD_BLUE)
         weather.grid(row=3, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
 
@@ -226,14 +327,21 @@ class Dashboard(tk.Tk):
 
         weather_right = tk.Frame(weather, bg=CARD_BLUE)
         weather_right.pack(side="left", padx=(24, 18), pady=8)
-        self.weather_detail = self.label(weather_right, "Connecting weather...", 15, MUTED, "bold")
-        self.weather_detail.pack(anchor="w", pady=(14, 0))
+        self.weather_cond = self.label(weather_right, "Connecting weather...", 14, WHITE, "bold")
+        self.weather_cond.pack(anchor="w", pady=(4, 2))
+        self.weather_humidity = self.label(weather_right, "Humidity: --%", 13, MUTED, "bold")
+        self.weather_humidity.pack(anchor="w", pady=(0, 0))
 
-        # ---------------- 5. Bottom Row: 50/50 Split (System Stats & Reserved Box) ----------------
+        # ---------------- Spacer (Row 4) ----------------
+        spacer = tk.Frame(root, bg=BG, height=0)
+        spacer.grid(row=4, column=0, columnspan=2, sticky="ew")
+
+        # ---------------- 5. Bottom Row: 50/50 Split (Row 5 - Expanded) ----------------
         bottom_container = tk.Frame(root, bg=BG)
-        bottom_container.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
+        bottom_container.grid(row=5, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
         bottom_container.grid_columnconfigure(0, weight=1, uniform="bot")
         bottom_container.grid_columnconfigure(1, weight=1, uniform="bot")
+        bottom_container.grid_rowconfigure(0, weight=1)
 
         # Left 50% Card: System Health Stats
         sys_card = self.card(bottom_container, CARD)
@@ -243,28 +351,62 @@ class Dashboard(tk.Tk):
         sys_inner.pack(fill="both", expand=True, padx=18, pady=12)
 
         self.label(sys_inner, "SYSTEM HEALTH", 11, MUTED, "bold").pack(anchor="w", pady=(0, 6))
-        self.cpu_temp_label = self.label(sys_inner, "CPU Temp: --\u00b0F", 11, WHITE, "bold")
-        self.cpu_temp_label.pack(anchor="w", pady=(2, 0))
-        self.ram_label = self.label(sys_inner, "RAM: --%", 11, WHITE, "bold")
-        self.ram_label.pack(anchor="w", pady=(2, 0))
-        self.disk_label = self.label(sys_inner, "Disk: --%", 11, WHITE, "bold")
-        self.disk_label.pack(anchor="w", pady=(2, 0))
-        self.load_label = self.label(sys_inner, "Load Avg: --", 11, WHITE, "bold")
-        self.load_label.pack(anchor="w", pady=(2, 0))
-        self.uptime_label = self.label(sys_inner, "Uptime: --", 11, WHITE, "bold")
-        self.uptime_label.pack(anchor="w", pady=(2, 0))
+        
+        stats_wrapper = tk.Frame(sys_inner, bg=CARD)
+        stats_wrapper.pack(fill="both", expand=True, padx=0, pady=(12, 0))
 
-        # Right 50% Card: Reserved Box
+        self.cpu_temp_label = self.label(stats_wrapper, "CPU Temp: --\u00b0F", 11, WHITE, "bold")
+        self.cpu_temp_label.pack(anchor="w", pady=2)
+        self.ram_label = self.label(stats_wrapper, "RAM: --%", 11, WHITE, "bold")
+        self.ram_label.pack(anchor="w", pady=2)
+        self.disk_label = self.label(stats_wrapper, "Disk: --%", 11, WHITE, "bold")
+        self.disk_label.pack(anchor="w", pady=2)
+        self.load_label = self.label(stats_wrapper, "Load Avg: --", 11, WHITE, "bold")
+        self.load_label.pack(anchor="w", pady=2)
+        self.uptime_label = self.label(stats_wrapper, "Uptime: --", 11, WHITE, "bold")
+        self.uptime_label.pack(anchor="w", pady=2)
+        self.ip_label = self.label(stats_wrapper, "IP: --", 11, WHITE, "bold")
+        self.ip_label.pack(anchor="w", pady=2)
+        self.net_label = self.label(stats_wrapper, "Connection: --", 11, WHITE, "bold")
+        self.net_label.pack(anchor="w", pady=2)
+        self.down_speed_label = self.label(stats_wrapper, "Download: --", 11, WHITE, "bold")
+        self.down_speed_label.pack(anchor="w", pady=2)
+        self.up_speed_label = self.label(stats_wrapper, "Upload: --", 11, WHITE, "bold")
+        self.up_speed_label.pack(anchor="w", pady=2)
+
+        # Right 50% Card: Logo Image Box (Scaled up to maximum bounds within the rounded card)
         res_card = self.card(bottom_container, CARD)
         res_card.grid(row=0, column=1, sticky="nsew", padx=(GAP // 2, 0))
 
         res_inner = tk.Frame(res_card, bg=CARD)
-        res_inner.pack(fill="both", expand=True, padx=18, pady=12)
-        self.label(res_inner, "RESERVED", 11, DIM, "bold").pack(anchor="w")
+        res_inner.pack(fill="both", expand=True, padx=0, pady=0)
 
-        # ---------------- 6. Footer Line (Pinned Timestamp) ----------------
+        self.logo_image_raw = None
+        self.logo_photo = None
+
+        try:
+            if os.path.exists("logo.png"):
+                self.logo_image_raw = Image.open("logo.png")
+        except Exception:
+            pass
+
+        self.logo_label = tk.Label(res_inner, bg=CARD)
+        self.logo_label.pack(expand=True, fill="both")
+
+        def _on_res_resize(event):
+            size = max(10, min(event.width, event.height))
+            if self.logo_image_raw:
+                resized_img = self.logo_image_raw.resize((size, size), Image.Resampling.LANCZOS)
+                self.logo_photo = ImageTk.PhotoImage(resized_img)
+                self.logo_label.config(image=self.logo_photo, text="")
+            else:
+                self.logo_label.config(text="logo.png missing", fg=DIM, font=("DejaVu Sans", 9, "bold"), image="")
+
+        res_inner.bind("<Configure>", _on_res_resize)
+
+        # ---------------- 6. Footer Line (Row 6) ----------------
         self.footer = self.label(root, self.last_updated, 10, DIM, "bold")
-        self.footer.grid(row=5, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        self.footer.grid(row=6, column=0, columnspan=2, sticky="w", pady=(0, 0))
 
     def _departure_card(self, parent, column, destination):
         left_pad = 0 if column == 0 else GAP // 2
@@ -388,8 +530,28 @@ class Dashboard(tk.Tk):
         self.date.config(text=now.strftime("%A - %B %-d") if hasattr(now, "strftime") else "")
         self.after(1000, self._tick_clock)
 
+    def _get_total_net_bytes(self):
+        rx_total = 0
+        tx_total = 0
+        try:
+            with open("/proc/net/dev", "r") as f:
+                lines = f.readlines()
+            for line in lines[2:]:
+                parts = line.strip().split(":")
+                if len(parts) == 2:
+                    iface = parts[0].strip()
+                    if iface == "lo":
+                        continue
+                    data = parts[1].split()
+                    if len(data) >= 9:
+                        rx_total += int(data[0])
+                        tx_total += int(data[8])
+        except Exception:
+            pass
+        return rx_total, tx_total
+
     def refresh_system_stats(self):
-        """Reads all available system telemetry: CPU temp, RAM, Disk, Load Average, and Uptime."""
+        """Reads all available system telemetry: CPU temp, RAM, Disk, Load Average, Uptime, IP, Connection, and Speeds."""
         # 1. CPU Temperature
         try:
             if os.path.exists("/sys/class/thermal/thermal_zone0/temp"):
@@ -440,12 +602,13 @@ class Dashboard(tk.Tk):
         except Exception:
             self.disk_label.config(text="Disk: N/A")
 
-        # 4. CPU Load Average
+        # 4. CPU Load Average (Truncated to prevent clipping)
         try:
             if os.path.exists("/proc/loadavg"):
                 with open("/proc/loadavg", "r") as f:
                     load_vals = f.read().split()[:3]
-                self.load_label.config(text=f"Load Avg: {load_vals[0]}, {load_vals[1]}, {load_vals[2]}")
+                load_str = f"Load Avg: {load_vals[0]}, {load_vals[1]}, {load_vals[2]}"
+                self.load_label.config(text=truncate(load_str, 28))
             else:
                 self.load_label.config(text="Load Avg: N/A")
         except Exception:
@@ -463,6 +626,38 @@ class Dashboard(tk.Tk):
                 self.uptime_label.config(text="Uptime: N/A")
         except Exception:
             self.uptime_label.config(text="Uptime: N/A")
+
+        # 6. Network IP & Connection
+        ip_addr = get_ip_address()
+        ssid = truncate(get_wifi_ssid(), 16)
+        self.ip_label.config(text=f"IP: {ip_addr}")
+        self.net_label.config(text=f"Connection: {ssid}")
+
+        # 7. Network Upload/Download Speeds
+        current_rx, current_tx = self._get_total_net_bytes()
+        now_time = time.time()
+        time_delta = now_time - getattr(self, 'last_net_time', now_time - 5)
+        if time_delta > 0:
+            rx_rate = (current_rx - getattr(self, 'last_rx_bytes', current_rx)) / time_delta
+            tx_rate = (current_tx - getattr(self, 'last_tx_bytes', current_tx)) / time_delta
+        else:
+            rx_rate = 0
+            tx_rate = 0
+
+        self.last_rx_bytes = current_rx
+        self.last_tx_bytes = current_tx
+        self.last_net_time = now_time
+
+        def format_speed(bytes_sec):
+            if bytes_sec > 1024 * 1024:
+                return f"{bytes_sec / (1024 * 1024):.1f} MB/s"
+            elif bytes_sec > 1024:
+                return f"{bytes_sec / 1024:.1f} KB/s"
+            else:
+                return f"{int(bytes_sec)} B/s"
+
+        self.down_speed_label.config(text=f"Download: {format_speed(rx_rate)}")
+        self.up_speed_label.config(text=f"Upload: {format_speed(tx_rate)}")
 
         self.after(SYSTEM_REFRESH_MS, self.refresh_system_stats)
 
@@ -504,9 +699,14 @@ class Dashboard(tk.Tk):
                 response = requests.get(WEATHER_URL, timeout=12)
                 response.raise_for_status()
                 current = response.json()["current"]
-                return round(current["temperature_2m"]), weather_text(current["weather_code"]), round(current["wind_speed_10m"])
+                return (
+                    round(current["temperature_2m"]),
+                    weather_text(current["weather_code"]),
+                    round(current["wind_speed_10m"]),
+                    round(current["relative_humidity_2m"])
+                )
             except Exception:
-                return 72, "Conditions unavailable", 5
+                return 72, "Conditions unavailable", 5, 50
         self._background("weather", fetch)
         self.after(WEATHER_REFRESH_MS, self.refresh_weather)
 
@@ -575,7 +775,7 @@ class Dashboard(tk.Tk):
         self.status_main.config(text=("Service Change" if has_alert else "Good Service"))
 
         msg_str = messages[0] if has_alert else "D trains are operating normally."
-        formatted_str = f"{msg_str}   \u2022   "
+        formatted_str = f"{msg_str}    \u2022    "
 
         if self.ticker_text_str != formatted_str:
             self.ticker_text_str = formatted_str
@@ -600,12 +800,14 @@ class Dashboard(tk.Tk):
             if kind == "trains":
                 self._apply_arrivals(self.north, value[NORTH_STOP_ID], is_north=True)
                 self._apply_arrivals(self.south, value[SOUTH_STOP_ID], is_north=False)
-                self.last_updated = datetime.now().strftime("UPDATED %I:%M %p").lstrip("0")
+                time_str = datetime.now().strftime("%I:%M %p").lstrip("0")
+                self.last_updated = f"UPDATED AT {time_str}"
                 self.footer.config(text=self.last_updated)
             elif kind == "weather":
-                temp, condition, wind = value
+                temp, condition, wind, humidity = value
                 self.weather_temp.config(text="%s\u00b0F" % temp)
-                self.weather_detail.config(text="%s \u2022 %s mph wind" % (condition, wind))
+                self.weather_cond.config(text="%s \u2022 %s mph wind" % (condition, wind))
+                self.weather_humidity.config(text="Humidity: %s%%" % humidity)
             elif kind == "status":
                 self._set_status(value)
         self.after(200, self._drain_events)
