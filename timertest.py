@@ -1,29 +1,84 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Fullscreen D-train departure board with a fully static low-power background."""
+"""Configurable NYC subway/SIR departure board with a low-power background."""
 
+import json
 import math
 import os
 import queue
 import shutil
 import socket
 import subprocess
+import sys
 import threading
 import time
 import tkinter as tk
+import tkinter.font as tkfont
 from datetime import datetime
+from pathlib import Path
 
 import requests
 from google.transit import gtfs_realtime_pb2
 
 # ---- Configuration -------------------------------------------------------
-STATION_NAME = "Bay 50 St"
-STATION_SUBTITLE = "Brooklyn - D train"
-NORTH_STOP_ID = "B23N"  # toward Manhattan
-SOUTH_STOP_ID = "B23S"  # toward Coney Island
+DEFAULT_CONFIG = {
+    "schema_version": 1,
+    "route_id": "D",
+    "route_ids": ["D"],
+    "badge": "D",
+    "service_name": "D train",
+    "route_name": "6 Avenue Express",
+    "route_color": "#EB6800",
+    "route_text_color": "#FFFFFF",
+    "feed_url": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm",
+    "station_id": "B23",
+    "station_name": "Bay 50 St",
+    "borough": "Brooklyn",
+    "directions": {
+        "N": {"stop_id": "B23N", "label": "Manhattan"},
+        "S": {"stop_id": "B23S", "label": "Coney Island"},
+    },
+}
+
+
+def load_trainui_config():
+    path = Path(os.environ.get("TRAINUI_CONFIG", "~/.config/trainui/config.json")).expanduser()
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+        required = (
+            "route_id", "route_ids", "badge", "service_name", "route_color",
+            "route_text_color", "feed_url", "station_id", "station_name",
+            "borough", "directions",
+        )
+        if any(key not in config for key in required):
+            raise ValueError("missing configuration field")
+        for direction in ("N", "S"):
+            if direction not in config["directions"]:
+                raise ValueError("both travel directions are required")
+            if not config["directions"][direction].get("stop_id"):
+                raise ValueError("direction stop ID is required")
+        return config
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return DEFAULT_CONFIG.copy()
+
+
+TRAINUI_CONFIG = load_trainui_config()
+ROUTE_ID = TRAINUI_CONFIG["route_id"]
+ROUTE_IDS = frozenset(TRAINUI_CONFIG["route_ids"])
+ROUTE_BADGE = TRAINUI_CONFIG["badge"]
+ROUTE_COLOR = TRAINUI_CONFIG["route_color"]
+ROUTE_TEXT_COLOR = TRAINUI_CONFIG["route_text_color"]
+SERVICE_NAME = TRAINUI_CONFIG["service_name"]
+STATION_ID = TRAINUI_CONFIG["station_id"]
+STATION_NAME = TRAINUI_CONFIG["station_name"]
+STATION_SUBTITLE = f"{TRAINUI_CONFIG['borough']} · {SERVICE_NAME}"
+NORTH_STOP_ID = TRAINUI_CONFIG["directions"]["N"]["stop_id"]
+SOUTH_STOP_ID = TRAINUI_CONFIG["directions"]["S"]["stop_id"]
+NORTH_DIRECTION_LABEL = TRAINUI_CONFIG["directions"]["N"]["label"]
+SOUTH_DIRECTION_LABEL = TRAINUI_CONFIG["directions"]["S"]["label"]
 LATITUDE, LONGITUDE = 40.587, -73.984  # Bay 50 St
 
-TRAIN_URL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm"
+TRAIN_URL = TRAINUI_CONFIG["feed_url"]
 ALERT_URL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fall-alerts"
 WEATHER_URL = (
     "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s"
@@ -140,6 +195,27 @@ def get_wifi_ssid():
     return "Disconnected"
 
 
+def parse_arrivals(content, route_ids, stop_ids, now=None):
+    """Extract the next three arrivals for configured stops from an MTA feed."""
+    feed = gtfs_realtime_pb2.FeedMessage()
+    feed.ParseFromString(content)
+    current_time = int(time.time()) if now is None else int(now)
+    result = {stop_id: [] for stop_id in stop_ids}
+    for entity in feed.entity:
+        if not entity.HasField("trip_update"):
+            continue
+        trip = entity.trip_update.trip
+        if trip.route_id and trip.route_id not in route_ids:
+            continue
+        for stop in entity.trip_update.stop_time_update:
+            if stop.stop_id not in result:
+                continue
+            stamp = stop.arrival.time or stop.departure.time
+            if stamp:
+                result[stop.stop_id].append(max(0, (stamp - current_time + 30) // 60))
+    return {key: sorted(set(value))[:3] for key, value in result.items()}
+
+
 class RoundedCard(tk.Canvas):
     """Custom container widget that draws rounded rectangles with clean borders."""
     def __init__(self, parent, bg=CARD, border_color=BORDER, radius=16, **kwargs):
@@ -210,20 +286,21 @@ class StaticBackground(tk.Frame):
 
 
 class Dashboard(tk.Tk):
-    def __init__(self):
+    def __init__(self, start_services=True, fullscreen=True):
         super().__init__()
-        self.title("D Train Departures")
+        self.title(f"{SERVICE_NAME} Departures — {STATION_NAME}")
         self.configure(bg=BG)
 
-        # Force geometry to fill screen and strip window borders
+        # Production kiosk mode fills the screen and strips window borders.
         self.geometry(f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}+0+0")
-        self.overrideredirect(True)
-        self.attributes("-fullscreen", True)
-        self.config(cursor="none")
+        if fullscreen:
+            self.overrideredirect(True)
+            self.attributes("-fullscreen", True)
+            self.config(cursor="none")
 
         self.events = queue.Queue()
         self.last_updated = "UPDATING..."
-        self.ticker_text_str = "D trains are operating normally."
+        self.ticker_text_str = f"{SERVICE_NAME} service is operating normally."
         self.ticker_x = 0.0
         self.ticker_text_width = 800  # Safe default width
         self.anim_step = 0
@@ -243,15 +320,16 @@ class Dashboard(tk.Tk):
         self.bind("<Escape>", lambda _event: self.destroy())
         self.bind("<F11>", lambda _event: self.attributes("-fullscreen", not self.attributes("-fullscreen")))
 
-        # Start animation loops & background fetches
-        self._tick_clock()
-        self._animate_ticker()
-        self._animate_led_breathing()
-        self._drain_events()
-        self.refresh_trains()
-        self.refresh_weather()
-        self.refresh_status()
-        self.refresh_system_stats()
+        if start_services:
+            # Start animation loops and background fetches only in production.
+            self._tick_clock()
+            self._animate_ticker()
+            self._animate_led_breathing()
+            self._drain_events()
+            self.refresh_trains()
+            self.refresh_weather()
+            self.refresh_status()
+            self.refresh_system_stats()
 
     def label(self, parent, text="", size=14, color=WHITE, weight="normal", **kwargs):
         return tk.Label(parent, text=text, bg=parent.cget("bg"), fg=color,
@@ -260,10 +338,24 @@ class Dashboard(tk.Tk):
     def card(self, parent, color=GLASS_CARD, border_color=GLASS_BORDER):
         return RoundedCard(parent, bg=color, border_color=border_color, radius=16)
 
+    def fitted_font_size(self, text, max_pixels, max_size, min_size=9, weight="bold"):
+        """Return the largest font size that fits without changing its container."""
+        for size in range(max_size, min_size - 1, -1):
+            candidate = tkfont.Font(self, family="DejaVu Sans", size=size, weight=weight)
+            if candidate.measure(text) <= max_pixels:
+                return size
+        # Extremely narrow displays still must not enlarge the fixed cards.
+        for size in range(min_size - 1, 0, -1):
+            candidate = tkfont.Font(self, family="DejaVu Sans", size=size, weight=weight)
+            if candidate.measure(text) <= max_pixels:
+                return size
+        return 1
+
     def _build_ui(self):
         # Plain static layout background with no stars, planets, particles,
         # weather effects, redraw loop, or background animation.
         root = StaticBackground(self)
+        self.space_background = root
         root.pack(fill="both", expand=True, padx=GAP, pady=GAP)
 
         root.grid_columnconfigure(0, weight=1, uniform="col")
@@ -318,12 +410,15 @@ class Dashboard(tk.Tk):
 
         hero_right = tk.Frame(hero, bg=GLASS_CARD)
         hero_right.grid(row=0, column=1, sticky="e", padx=18, pady=8)
-        self.label(hero_right, STATION_NAME, 26, WHITE, "bold").pack(anchor="e")
-        self.label(hero_right, STATION_SUBTITLE, 15, MUTED, "bold").pack(anchor="e", pady=(4, 0))
+        hero_text_width = max(110, self.winfo_screenwidth() // 2 - 48)
+        station_size = self.fitted_font_size(STATION_NAME, hero_text_width, 26, 6)
+        subtitle_size = self.fitted_font_size(STATION_SUBTITLE, hero_text_width, 15, 6)
+        self.label(hero_right, STATION_NAME, station_size, WHITE, "bold").pack(anchor="e")
+        self.label(hero_right, STATION_SUBTITLE, subtitle_size, MUTED, "bold").pack(anchor="e", pady=(4, 0))
 
         # ---------------- 2. Train Departures Section (Row 1) ----------------
-        self.north = self._departure_card(root, 0, "Manhattan", row=1)
-        self.south = self._departure_card(root, 1, "Coney Island", row=1)
+        self.north = self._departure_card(root, 0, NORTH_DIRECTION_LABEL, row=1)
+        self.south = self._departure_card(root, 1, SOUTH_DIRECTION_LABEL, row=1)
 
         # ---------------- 3. Service Status (Row 2) ----------------
         self.status_card = self.card(root, "#08202a", BORDER)
@@ -453,10 +548,16 @@ class Dashboard(tk.Tk):
 
         badge = tk.Canvas(top, width=36, height=36, bg=GLASS_CARD, highlightthickness=0)
         badge.pack(side="left")
-        badge.create_oval(2, 2, 34, 34, fill=ORANGE, outline="")
-        badge.create_text(18, 18, text="D", fill="white", font=("DejaVu Sans", 17, "bold"))
+        badge.create_oval(2, 2, 34, 34, fill=ROUTE_COLOR, outline="")
+        badge_size = self.fitted_font_size(ROUTE_BADGE, 27, 17, 8)
+        badge.create_text(
+            18, 18, text=ROUTE_BADGE, fill=ROUTE_TEXT_COLOR,
+            font=("DejaVu Sans", badge_size, "bold"),
+        )
 
-        self.label(top, destination, 20, WHITE, "bold").pack(side="left", padx=(10, 0))
+        direction_width = max(80, self.winfo_screenwidth() // 2 - 88)
+        direction_size = self.fitted_font_size(destination, direction_width, 20, 6)
+        self.label(top, destination, direction_size, WHITE, "bold").pack(side="left", padx=(10, 0))
 
         timetable = tk.Frame(frame, bg=GLASS_CARD)
         timetable.pack(fill="both", expand=True, padx=14, pady=(2, 8))
@@ -706,23 +807,11 @@ class Dashboard(tk.Tk):
         def fetch():
             response = requests.get(TRAIN_URL, timeout=12)
             response.raise_for_status()
-            feed = gtfs_realtime_pb2.FeedMessage()
-            feed.ParseFromString(response.content)
-            now = int(time.time())
-            result = {NORTH_STOP_ID: [], SOUTH_STOP_ID: []}
-            for entity in feed.entity:
-                if not entity.HasField("trip_update"):
-                    continue
-                trip = entity.trip_update.trip
-                if trip.route_id and trip.route_id != "D":
-                    continue
-                for stop in entity.trip_update.stop_time_update:
-                    if stop.stop_id not in result:
-                        continue
-                    stamp = stop.arrival.time or stop.departure.time
-                    if stamp:
-                        result[stop.stop_id].append(max(0, (stamp - now + 30) // 60))
-            return {key: sorted(set(value))[:3] for key, value in result.items()}
+            return parse_arrivals(
+                response.content,
+                ROUTE_IDS,
+                (NORTH_STOP_ID, SOUTH_STOP_ID),
+            )
         self._background("trains", fetch)
         self.after(TRAIN_REFRESH_MS, self.refresh_trains)
 
@@ -758,9 +847,11 @@ class Dashboard(tk.Tk):
                         continue
                     alert = entity.alert
                     routes = {item.route_id for item in alert.informed_entity if item.route_id}
-                    if "D" not in routes:
+                    stops = {item.stop_id for item in alert.informed_entity if item.stop_id}
+                    selected_stops = {STATION_ID, NORTH_STOP_ID, SOUTH_STOP_ID}
+                    if not routes.intersection(ROUTE_IDS) and not stops.intersection(selected_stops):
                         continue
-                    text = alert.header_text.translation[0].text if alert.header_text.translation else "D train service change"
+                    text = alert.header_text.translation[0].text if alert.header_text.translation else f"{SERVICE_NAME} service change"
                     messages.append(text.replace("\n", " "))
                 return messages
             except Exception:
@@ -809,7 +900,7 @@ class Dashboard(tk.Tk):
         self.status_title.config(text=("!  SERVICE ALERT" if has_alert else "OK  SERVICE STATUS"), fg=color)
         self.status_main.config(text=("Service Change" if has_alert else "Good Service"))
 
-        msg_str = messages[0] if has_alert else "D trains are operating normally."
+        msg_str = messages[0] if has_alert else f"{SERVICE_NAME} service is operating normally."
         formatted_str = f"{msg_str}    \u2022    "
 
         if self.ticker_text_str != formatted_str:
@@ -849,5 +940,17 @@ class Dashboard(tk.Tk):
         self.after(200, self._drain_events)
 
 
+def smoke_test_ui():
+    """Construct the complete layout without fullscreen mode or network work."""
+    dashboard = Dashboard(start_services=False, fullscreen=False)
+    dashboard.withdraw()
+    dashboard.update_idletasks()
+    dashboard.destroy()
+    print(f"TrainUI UI smoke test passed: {SERVICE_NAME} at {STATION_NAME}")
+
+
 if __name__ == "__main__":
-    Dashboard().mainloop()
+    if "--smoke-test" in sys.argv:
+        smoke_test_ui()
+    else:
+        Dashboard().mainloop()

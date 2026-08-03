@@ -8,6 +8,8 @@ MAIN_FILE="$APP_DIR/timertest.py"
 RUNNER="$APP_DIR/run_trainui.sh"
 AUTOSTART_DIR="$HOME/.config/autostart"
 LABWC_DIR="$HOME/.config/labwc"
+TRAINUI_CONFIG_DIR="$HOME/.config/trainui"
+TRAINUI_CONFIG_FILE="$TRAINUI_CONFIG_DIR/config.json"
 LOG_FILE="$APP_DIR/trainui.log"
 
 say() {
@@ -126,6 +128,22 @@ if [ ! -f "$MAIN_FILE" ]; then
     fail "timertest.py was not found in the GitHub repository."
 fi
 
+if [ ! -f "$APP_DIR/installer/configure.py" ] || \
+   [ ! -f "$APP_DIR/installer/subway_catalog.json" ]; then
+    fail "The route and station configurator was not found in the GitHub repository."
+fi
+
+say "Configuring the train and station..."
+mkdir -p "$TRAINUI_CONFIG_DIR"
+if [ -t 1 ] && [ -r /dev/tty ]; then
+    python3 "$APP_DIR/installer/configure.py" \
+        --config "$TRAINUI_CONFIG_FILE" </dev/tty
+else
+    python3 "$APP_DIR/installer/configure.py" \
+        --config "$TRAINUI_CONFIG_FILE" \
+        --non-interactive
+fi
+
 say "Hardening Wi-Fi reliability..."
 
 # NetworkManager uses 2 for disabled Wi-Fi power saving. This global setting
@@ -190,6 +208,9 @@ APP_DIR="$APP_DIR"
 PYTHON="$VENV_DIR/bin/python"
 MAIN_FILE="$MAIN_FILE"
 LOG_FILE="$LOG_FILE"
+CONFIG_FILE="$TRAINUI_CONFIG_FILE"
+
+export TRAINUI_CONFIG="\$CONFIG_FILE"
 
 mkdir -p "\$APP_DIR"
 

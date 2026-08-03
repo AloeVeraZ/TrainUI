@@ -2,7 +2,7 @@
 
 # 🚇 TrainUI
 
-### A fullscreen, always-on NYC D train departure board for Raspberry Pi
+### A fullscreen, always-on NYC subway and Staten Island Railway departure board for Raspberry Pi
 
 Live arrivals · Service alerts · Local weather · System status
 
@@ -12,7 +12,7 @@ Live arrivals · Service alerts · Local weather · System status
 
 </div>
 
-TrainUI turns a Raspberry Pi and display into a dedicated departure board for **Bay 50 St** in Brooklyn. It starts automatically, rotates the display 270°, stays fullscreen, and uses live public data—no API keys required.
+TrainUI turns a Raspberry Pi and display into a dedicated departure board for any selectable New York City subway or Staten Island Railway station. It starts automatically, rotates the display 270°, stays fullscreen, and uses live public data—no API keys required.
 
 ## Before you install
 
@@ -45,7 +45,7 @@ Then run:
 curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/installer/install.sh | bash
 ```
 
-Do **not** add `sudo` before the command. The installer asks for your password when elevated access is needed, completes the entire setup, and reboots the Pi.
+Do **not** add `sudo` before the command. The installer asks you to choose a train and then a station, asks for your password when elevated access is needed, completes the entire setup, and reboots the Pi. The numbered menu includes the 1–7 trains, all lettered subway services, all three subway shuttles, and Staten Island Railway. It does not include LIRR or Metro-North.
 
 After reboot, TrainUI launches automatically in fullscreen and applies a 270° display rotation.
 
@@ -55,13 +55,14 @@ The installer:
 
 1. Installs the desktop, display, Python, font, and networking dependencies.
 2. Clones this repository into `~/TrainUI`.
-3. Creates an isolated Python environment and installs [`requirements.txt`](requirements.txt).
-4. Validates the Python source and required imports.
-5. Creates `~/TrainUI/run_trainui.sh` to rotate the active display and launch the app.
-6. Registers desktop autostart for both current Wayland/labwc and older X11 Raspberry Pi OS releases.
-7. Applies network-agnostic Wi-Fi reliability settings and enables automatic reconnection checks.
-8. Enables desktop auto-login and prevents desktop, console, and system sleep blanking.
-9. Reboots the Pi.
+3. Prompts for a train and one of the stations served by that train using the bundled official MTA catalog.
+4. Stores the selection outside the Git checkout in `~/.config/trainui/config.json` so updates preserve it.
+5. Creates an isolated Python environment and installs [`requirements.txt`](requirements.txt).
+6. Validates the Python source and required imports.
+7. Creates `~/TrainUI/run_trainui.sh` to rotate the active display and launch the app.
+8. Registers desktop autostart for both current Wayland/labwc and older X11 Raspberry Pi OS releases.
+9. Applies network-agnostic Wi-Fi reliability settings and enables automatic reconnection checks.
+10. Enables desktop auto-login, prevents blanking and sleep, and reboots the Pi.
 
 Running the install command again updates an existing installation. A clean checkout is updated in place. If the app folder contains local edits, local commits, or a damaged checkout, the installer preserves the old folder as a timestamped `~/TrainUI.backup.*` directory and installs a fresh copy automatically.
 
@@ -92,7 +93,9 @@ The watchdog reuses the Wi-Fi credentials already saved by Raspberry Pi OS; the 
 | Rotation | 270° |
 | API keys | None |
 
-Arrival and alert data comes from the MTA's public GTFS-Realtime feeds. Weather comes from Open-Meteo.
+Bay 50 St and the D train remain the fallback only when the installer has no interactive terminal and no saved selection. Normally, the installer writes the selected route, station, borough, two MTA direction labels, realtime feed, route IDs, and official route colors to `~/.config/trainui/config.json`.
+
+Arrival and route-specific alert data comes from the MTA's public GTFS-Realtime feeds. The selectable catalog is generated from the MTA's official static subway GTFS and Subway Stations datasets. Weather comes from Open-Meteo.
 
 ## Useful commands
 
@@ -118,11 +121,20 @@ pkill -f timertest.py || true
 
 Update or reinstall TrainUI by rerunning the one-command installer. It refreshes the repository and Python environment, then reboots. If you edited files directly on the Pi, your previous folder is retained as `~/TrainUI.backup.*` while the current GitHub version is installed cleanly.
 
-## Customizing the station
+Change the selected train or station at any time:
 
-The station name, stop IDs, coordinates, feed URLs, refresh intervals, colors, and layout constants are grouped near the top of [`timertest.py`](timertest.py). Changing stations may also require selecting the correct MTA feed URL for that subway line.
+```bash
+python3 ~/TrainUI/installer/configure.py --config ~/.config/trainui/config.json
+sudo reboot
+```
 
-After editing the file on the Pi, reboot to reload it:
+## Train and station behavior
+
+The selected configuration changes the station heading, borough/service subtitle, MTA route badge and colors, direction labels, directional GTFS stop IDs, realtime arrival feed, and service-alert filter. Long station and direction names automatically use a smaller font while their cards retain the same dimensions.
+
+Express variants such as `6X`, `7X`, and `FX` are included automatically with their corresponding 6, 7, or F selection. The three shuttle choices are shown separately as 42 St Shuttle, Franklin Av Shuttle, and Rockaway Park Shuttle.
+
+After changing the saved selection, reboot to reload it:
 
 ```bash
 sudo reboot
@@ -179,9 +191,13 @@ TrainUI/
 │   ├── systemd/
 │   │   ├── trainui-connectivity.service
 │   │   └── trainui-connectivity.timer
+│   ├── build_subway_catalog.py # Refresh catalog from official MTA data
+│   ├── configure.py       # Interactive train/station selector
 │   ├── connectivity-watchdog.sh
-│   └── install.sh       # Complete Raspberry Pi setup
+│   ├── subway_catalog.json # Generated subway/SIR route and station data
+│   └── install.sh         # Complete Raspberry Pi setup
 ├── requirements.txt     # Python packages
+├── tests/                # Catalog matrix and live-feed validation
 ├── timertest.py         # TrainUI application
 └── README.md
 ```
