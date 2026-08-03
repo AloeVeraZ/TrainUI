@@ -44,6 +44,8 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
     python3-pil \
     python3-pil.imagetk \
     fonts-dejavu-core \
+    iw \
+    rfkill \
     wlr-randr \
     x11-xserver-utils
 
@@ -93,6 +95,43 @@ fi
 if [ ! -f "$MAIN_FILE" ]; then
     fail "timertest.py was not found in the GitHub repository."
 fi
+
+say "Hardening Wi-Fi reliability..."
+
+# NetworkManager uses 2 for disabled Wi-Fi power saving. The watchdog below
+# also applies this at the driver level and reconnects only when disconnected.
+if command -v nmcli >/dev/null 2>&1; then
+    sudo install -d -m 0755 /etc/NetworkManager/conf.d
+    sudo tee /etc/NetworkManager/conf.d/90-trainui-wifi.conf >/dev/null <<'EOF'
+[connection]
+wifi.powersave=2
+EOF
+
+    while IFS=: read -r connection_uuid connection_type; do
+        [ "$connection_type" = "802-11-wireless" ] || continue
+        sudo nmcli connection modify uuid "$connection_uuid" \
+            connection.autoconnect yes \
+            connection.autoconnect-retries 0 \
+            802-11-wireless.powersave 2
+    done < <(nmcli -t -f UUID,TYPE connection show)
+fi
+
+if [ ! -f "$APP_DIR/installer/connectivity-watchdog.sh" ]; then
+    fail "The Wi-Fi watchdog was not found in the GitHub repository."
+fi
+
+sudo install -m 0755 \
+    "$APP_DIR/installer/connectivity-watchdog.sh" \
+    /usr/local/sbin/trainui-connectivity
+sudo install -m 0644 \
+    "$APP_DIR/installer/systemd/trainui-connectivity.service" \
+    /etc/systemd/system/trainui-connectivity.service
+sudo install -m 0644 \
+    "$APP_DIR/installer/systemd/trainui-connectivity.timer" \
+    /etc/systemd/system/trainui-connectivity.timer
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now trainui-connectivity.timer
 
 say "Creating the TrainUI Python environment..."
 
@@ -194,11 +233,43 @@ PY
     return 0
 }
 
+keep_display_awake() {
+    while true; do
+        # X11: disable the screensaver and DPMS, then wake the display.
+        if command -v xset >/dev/null 2>&1; then
+            xset s off >/dev/null 2>&1 || true
+            xset s noblank >/dev/null 2>&1 || true
+            xset -dpms >/dev/null 2>&1 || true
+            xset dpms force on >/dev/null 2>&1 || true
+        fi
+
+        # Wayland/labwc: re-enable an output only if it became disabled.
+        if command -v wlr-randr >/dev/null 2>&1; then
+            display_state="\$(wlr-randr 2>/dev/null || true)"
+            if printf '%s\n' "\$display_state" | grep -q 'Enabled: no'; then
+                printf '%s\n' "\$display_state" |
+                    awk '/^[^[:space:]]/ {print \$1}' |
+                    while IFS= read -r display_output; do
+                        [ -n "\$display_output" ] || continue
+                        wlr-randr --output "\$display_output" --on \
+                            >> "\$LOG_FILE" 2>&1 || true
+                    done
+            fi
+        fi
+
+        sleep 30
+    done
+}
+
 cd "\$APP_DIR"
 rotate_display
 wait_for_mta
 
-exec "\$PYTHON" "\$MAIN_FILE" >> "\$LOG_FILE" 2>&1
+keep_display_awake &
+display_watchdog_pid=\$!
+trap 'kill "\$display_watchdog_pid" 2>/dev/null || true' EXIT INT TERM
+
+"\$PYTHON" "\$MAIN_FILE" >> "\$LOG_FILE" 2>&1
 EOF
 
 chmod +x "$RUNNER"
@@ -230,12 +301,36 @@ $RUNNER &
 # TRAINUI END
 EOF
 
-say "Enabling desktop auto-login and disabling blanking..."
+say "Enabling desktop auto-login and preventing sleep or blanking..."
 
 if command -v raspi-config >/dev/null 2>&1; then
     sudo raspi-config nonint do_boot_behaviour B4 || true
     sudo raspi-config nonint do_blanking 1 || true
 fi
+
+# Prevent system-level idle actions and X11 display power management.
+sudo install -d -m 0755 /etc/systemd/logind.conf.d
+sudo tee /etc/systemd/logind.conf.d/90-trainui.conf >/dev/null <<'EOF'
+[Login]
+IdleAction=ignore
+EOF
+
+if [ -d /etc/lightdm ] || command -v lightdm >/dev/null 2>&1; then
+    sudo install -d -m 0755 /etc/lightdm/lightdm.conf.d
+    sudo tee /etc/lightdm/lightdm.conf.d/90-trainui.conf >/dev/null <<'EOF'
+[Seat:*]
+xserver-command=X -s 0 -dpms
+EOF
+fi
+
+# A dedicated kiosk should never enter system sleep. Unsupported targets are
+# ignored so this remains compatible across Raspberry Pi OS releases.
+sudo systemctl mask \
+    sleep.target \
+    suspend.target \
+    hibernate.target \
+    hybrid-sleep.target \
+    2>/dev/null || true
 
 CMDLINE_FILE="/boot/firmware/cmdline.txt"
 if [ ! -f "$CMDLINE_FILE" ]; then
@@ -253,6 +348,8 @@ fi
 say "Installation complete."
 echo "The Pi will reboot in five seconds."
 echo "TrainUI will start automatically at 270 degrees."
+echo "Wi-Fi power saving is disabled and reconnection checks run every 30 seconds."
+echo "Desktop, console, X11, Wayland, and system sleep blanking are disabled."
 echo "Runtime log: $LOG_FILE"
 
 sync

@@ -1,0 +1,11 @@
+[Unit]
+Description=Keep TrainUI connected to Wi-Fi
+
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=30s
+AccuracySec=5s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

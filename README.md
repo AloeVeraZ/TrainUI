@@ -54,13 +54,27 @@ The installer:
 1. Installs the desktop, display, Python, font, and networking dependencies.
 2. Clones this repository into `~/TrainUI`.
 3. Creates an isolated Python environment and installs [`requirements.txt`](requirements.txt).
-4. validates the Python source and required imports.
+4. Validates the Python source and required imports.
 5. Creates `~/TrainUI/run_trainui.sh` to rotate the active display and launch the app.
 6. Registers desktop autostart for both current Wayland/labwc and older X11 Raspberry Pi OS releases.
-7. Enables desktop auto-login and disables screen blanking.
-8. Reboots the Pi.
+7. Disables Wi-Fi power saving and enables automatic reconnection checks.
+8. Enables desktop auto-login and prevents desktop, console, and system sleep blanking.
+9. Reboots the Pi.
 
 Running the install command again safely updates an existing clean installation. If the existing app folder contains local edits, the installer stops instead of deleting them.
+
+## Always-on reliability
+
+TrainUI is configured as a dedicated kiosk during installation:
+
+- Wi-Fi power saving is disabled globally and on every detected wireless interface.
+- Saved NetworkManager Wi-Fi profiles are set to reconnect indefinitely.
+- A lightweight systemd timer checks the interface every 30 seconds and reconnects it only when it has dropped.
+- Raspberry Pi desktop blanking and console blanking are disabled.
+- X11 screensaver/DPMS, system login idle actions, suspend, and hibernation are disabled.
+- The launcher keeps the active Wayland or X11 display awake while TrainUI runs.
+
+The watchdog reuses the Wi-Fi credentials already saved by Raspberry Pi OS; the repository and watchdog contain no SSID or password. No software can guarantee connectivity when the router, internet service, power, or Wi-Fi signal is unavailable, but TrainUI will automatically recover when the saved network becomes available again.
 
 ## Data and defaults
 
@@ -83,6 +97,13 @@ View the live runtime log:
 
 ```bash
 tail -f ~/TrainUI/trainui.log
+```
+
+Check the automatic Wi-Fi recovery timer:
+
+```bash
+systemctl status trainui-connectivity.timer
+sudo journalctl -u trainui-connectivity.service --since today
 ```
 
 Restart the interface without rebooting:
@@ -132,11 +153,30 @@ The supplied display setup expects 270°. Edit `--transform 270` and `--rotate l
 
 Check internet access and the runtime log. TrainUI starts even if the MTA endpoint is temporarily unavailable and continues retrying from the app.
 
+**Wi-Fi repeatedly drops**
+
+Check signal strength and the watchdog status:
+
+```bash
+nmcli device wifi list
+systemctl status trainui-connectivity.timer
+```
+
+The Pi Zero W supports 2.4 GHz Wi-Fi, so confirm that the configured network offers a compatible 2.4 GHz signal. The watchdog can reconnect a saved network, but it cannot fix weak signal strength, router outages, or incorrect credentials.
+
+**The display still powers itself off**
+
+TrainUI disables Raspberry Pi OS blanking, DPMS, and system sleep and periodically wakes a disabled software output. If the screen's own hardware menu has an independent sleep timer, eco mode, or auto-off option, disable that setting with the monitor's physical controls as well.
+
 ## Project layout
 
 ```text
 TrainUI/
 ├── installer/
+│   ├── systemd/
+│   │   ├── trainui-connectivity.service
+│   │   └── trainui-connectivity.timer
+│   ├── connectivity-watchdog.sh
 │   └── install.sh       # Complete Raspberry Pi setup
 ├── requirements.txt     # Python packages
 ├── timertest.py         # TrainUI application

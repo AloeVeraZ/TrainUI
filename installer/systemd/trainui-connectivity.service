@@ -1,0 +1,7 @@
+[Unit]
+Description=TrainUI Wi-Fi reliability check
+After=NetworkManager.service wpa_supplicant.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/trainui-connectivity
