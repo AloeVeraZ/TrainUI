@@ -61,7 +61,7 @@ The installer:
 8. Enables desktop auto-login and prevents desktop, console, and system sleep blanking.
 9. Reboots the Pi.
 
-Running the install command again safely updates an existing clean installation. If the existing app folder contains local edits, the installer stops instead of deleting them.
+Running the install command again updates an existing installation. A clean checkout is updated in place. If the app folder contains local edits, local commits, or a damaged checkout, the installer preserves the old folder as a timestamped `~/TrainUI.backup.*` directory and installs a fresh copy automatically.
 
 ## Always-on reliability
 
@@ -113,7 +113,7 @@ pkill -f timertest.py || true
 ~/TrainUI/run_trainui.sh &
 ```
 
-Update TrainUI by rerunning the one-command installer. It refreshes the repository and Python environment, then reboots.
+Update or reinstall TrainUI by rerunning the one-command installer. It refreshes the repository and Python environment, then reboots. If you edited files directly on the Pi, your previous folder is retained as `~/TrainUI.backup.*` while the current GitHub version is installed cleanly.
 
 ## Customizing the station
 

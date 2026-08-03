@@ -74,22 +74,52 @@ sudo systemctl enable lightdm 2>/dev/null || true
 
 say "Downloading TrainUI from GitHub..."
 
+install_fresh_copy() {
+    local reason="${1:-An existing TrainUI folder was found.}"
+    local install_stamp="$(date +%Y%m%d-%H%M%S).$$"
+    local backup_dir="${APP_DIR}.backup.${install_stamp}"
+    local fresh_dir="${APP_DIR}.installing.${install_stamp}"
+
+    say "$reason"
+    # Clone before moving the working installation. If GitHub is unavailable,
+    # the currently installed copy remains exactly where it was.
+    git clone --branch main --single-branch "$REPO_URL" "$fresh_dir"
+    mv "$APP_DIR" "$backup_dir"
+    mv "$fresh_dir" "$APP_DIR"
+    say "The previous installation was preserved at $backup_dir"
+}
+
 if [ -d "$APP_DIR/.git" ]; then
-    if [ -n "$(git -C "$APP_DIR" status --porcelain)" ]; then
-        fail "$APP_DIR contains local changes. Commit or remove them before updating."
+    # Older installers generated run_trainui.sh without adding it to .gitignore.
+    # Exclude that installer-owned file so existing installations can upgrade.
+    checkout_changes=""
+    checkout_is_valid=true
+    if checkout_changes="$(git -C "$APP_DIR" status --porcelain --untracked-files=all)"; then
+        checkout_changes="$(printf '%s\n' "$checkout_changes" | grep -vFx '?? run_trainui.sh' || true)"
+    else
+        checkout_is_valid=false
     fi
 
-    git -C "$APP_DIR" fetch --prune origin main
-    git -C "$APP_DIR" checkout main
-    git -C "$APP_DIR" pull --ff-only origin main
+    if [ "$checkout_is_valid" != true ]; then
+        install_fresh_copy "The existing Git checkout is damaged; reinstalling it."
+    elif ! git -C "$APP_DIR" fetch --prune origin main; then
+        install_fresh_copy "The existing Git checkout could not be updated; reinstalling it."
+    elif [ -n "$checkout_changes" ]; then
+        install_fresh_copy "Local changes were found; reinstalling a clean copy."
+    elif ! git -C "$APP_DIR" show-ref --verify --quiet refs/heads/main; then
+        install_fresh_copy "The existing checkout has no main branch; reinstalling it."
+    elif ! git -C "$APP_DIR" merge-base --is-ancestor main origin/main; then
+        install_fresh_copy "The existing main branch has local commits; reinstalling a clean copy."
+    else
+        git -C "$APP_DIR" checkout -f main
+        git -C "$APP_DIR" reset --hard origin/main
+    fi
 else
     if [ -e "$APP_DIR" ]; then
-        backup_dir="${APP_DIR}.backup.$(date +%Y%m%d-%H%M%S)"
-        mv "$APP_DIR" "$backup_dir"
-        say "Existing $APP_DIR moved to $backup_dir"
+        install_fresh_copy "A non-Git TrainUI folder was found; reinstalling a clean copy."
+    else
+        git clone --branch main --single-branch "$REPO_URL" "$APP_DIR"
     fi
-
-    git clone --branch main --single-branch "$REPO_URL" "$APP_DIR"
 fi
 
 if [ ! -f "$MAIN_FILE" ]; then
