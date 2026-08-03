@@ -7,10 +7,6 @@ import os
 from pathlib import Path
 
 
-DEFAULT_ROUTE = "D"
-DEFAULT_STATION = "B23"
-
-
 def prompt_choice(items, label, describe):
     print(f"\n{label}")
     for number, item in enumerate(items, 1):
@@ -92,8 +88,10 @@ def main():
             print(f"Keeping TrainUI selection: {existing_summary(existing)}")
             route, station = existing_selection
         else:
-            route, station = find_selection(catalog, DEFAULT_ROUTE, DEFAULT_STATION)
-            print(f"No terminal available; using default: {route['service_name']} at {station['station_name']}")
+            raise SystemExit(
+                "TrainUI has no saved train/station selection and no interactive terminal. "
+                "SSH into the Pi and run the installer directly from that terminal."
+            )
     else:
         if existing:
             answer = input(f"\nCurrent selection: {existing_summary(existing)}\nKeep it? [Y/n]: ").strip().casefold()

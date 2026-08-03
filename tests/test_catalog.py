@@ -62,9 +62,9 @@ class CatalogTests(unittest.TestCase):
                     choices += 1
         self.assertGreaterEqual(choices, 900)
 
-    def test_default_bay_50_d_selection_remains_available(self):
+    def test_bay_50_d_remains_one_available_selection(self):
         route, station = configure.find_selection(
-            self.catalog, configure.DEFAULT_ROUTE, configure.DEFAULT_STATION,
+            self.catalog, "D", "B23",
         )
         self.assertEqual("D", route["route_id"])
         self.assertEqual("Bay 50 St", station["station_name"])
@@ -114,6 +114,21 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual("SI", refreshed["route_id"])
             self.assertEqual("S31", refreshed["station_id"])
             self.assertTrue(refreshed["feed_url"].endswith("gtfs-si"))
+
+    def test_first_noninteractive_install_has_no_silent_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "config.json"
+            result = subprocess.run(
+                [
+                    sys.executable, str(CONFIGURE_PATH), "--config", str(config_path),
+                    "--non-interactive",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(0, result.returncode)
+            self.assertFalse(config_path.exists())
+            self.assertIn("no saved train/station selection", result.stderr)
 
 
 if __name__ == "__main__":

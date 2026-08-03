@@ -21,7 +21,7 @@ import requests
 from google.transit import gtfs_realtime_pb2
 
 # ---- Configuration -------------------------------------------------------
-DEFAULT_CONFIG = {
+TEST_CONFIG = {
     "schema_version": 1,
     "route_id": "D",
     "route_ids": ["D"],
@@ -58,8 +58,12 @@ def load_trainui_config():
             if not config["directions"][direction].get("stop_id"):
                 raise ValueError("direction stop ID is required")
         return config
-    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
-        return DEFAULT_CONFIG.copy()
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        if os.environ.get("TRAINUI_TEST_CONFIG") == "1":
+            return TEST_CONFIG.copy()
+        raise SystemExit(
+            f"TrainUI is not configured. Rerun the installer to select a train and station: {path}"
+        ) from exc
 
 
 TRAINUI_CONFIG = load_trainui_config()
@@ -76,7 +80,8 @@ NORTH_STOP_ID = TRAINUI_CONFIG["directions"]["N"]["stop_id"]
 SOUTH_STOP_ID = TRAINUI_CONFIG["directions"]["S"]["stop_id"]
 NORTH_DIRECTION_LABEL = TRAINUI_CONFIG["directions"]["N"]["label"]
 SOUTH_DIRECTION_LABEL = TRAINUI_CONFIG["directions"]["S"]["label"]
-LATITUDE, LONGITUDE = 40.587, -73.984  # Bay 50 St
+# A fixed Central Park reference keeps weather citywide and station-independent.
+LATITUDE, LONGITUDE = 40.7812, -73.9665
 
 TRAIN_URL = TRAINUI_CONFIG["feed_url"]
 ALERT_URL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fall-alerts"

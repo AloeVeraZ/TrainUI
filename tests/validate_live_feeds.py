@@ -2,6 +2,7 @@
 """Optional network smoke test for every realtime feed used by the catalog."""
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from google.transit import gtfs_realtime_pb2
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+os.environ.setdefault("TRAINUI_TEST_CONFIG", "1")
 import timertest
 
 

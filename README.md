@@ -2,114 +2,177 @@
 
 # 🚇 TrainUI
 
-### A fullscreen, always-on NYC subway and Staten Island Railway departure board for Raspberry Pi
+### An always-on New York City train departure board built around a Raspberry Pi Zero W
 
-Live arrivals · Service alerts · Local weather · System status
+Live arrivals · Service alerts · NYC weather · System health
 
 [![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-OS-C51A4A?logo=raspberrypi&logoColor=white)](https://www.raspberrypi.com/software/)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![MTA](https://img.shields.io/badge/Data-MTA%20GTFS--Realtime-0039A6)](https://new.mta.info/developers)
+[![MTA](https://img.shields.io/badge/Data-MTA%20GTFS--Realtime-0039A6)](https://www.mta.info/developers)
 
 </div>
 
-TrainUI turns a Raspberry Pi and display into a dedicated departure board for any selectable New York City subway or Staten Island Railway station. It starts automatically, rotates the display 270°, stays fullscreen, and uses live public data—no API keys required.
+TrainUI turns a Raspberry Pi and HDMI display into a dedicated, glanceable departure board for New York City subway and Staten Island Railway service. During installation, the owner chooses a train and then chooses a station served by that train. There is no preselected station or line.
 
-## Before you install
+Once installed, TrainUI boots directly into a fullscreen kiosk, rotates the display 270°, and continually updates arrivals, service alerts, weather, time, and Raspberry Pi health information. The public MTA feeds used by the project do not require an API key.
 
-Set these options while writing Raspberry Pi OS with [Raspberry Pi Imager](https://www.raspberrypi.com/software/):
+## What TrainUI supports
 
-- Connect the Pi to **Wi-Fi or Ethernet with internet access**.
-- **Enable SSH**.
-- Create a username and password. The username can be anything, but it must have `sudo` access.
-- Choose any hostname you like, such as `trainui.local`.
-- Attach the display before the first TrainUI boot.
+The installer includes:
 
-> [!IMPORTANT]
-> The hostname, username, Wi-Fi network name, and IP address do **not** need to match the project. You only need the hostname or IP address to SSH into your own Pi.
+- Numbered trains: 1, 2, 3, 4, 5, 6, and 7.
+- Lettered trains: A, B, C, D, E, F, G, J, L, M, N, Q, R, W, and Z.
+- 42 St Shuttle, Franklin Av Shuttle, and Rockaway Park Shuttle.
+- Staten Island Railway.
+- Every route/station combination included in the bundled official MTA catalog.
 
-**Officially supported setup:** the current, non-legacy **Raspberry Pi OS (32-bit) with Desktop** image. This is the configuration used on the Raspberry Pi Zero W. The installer has no dependency on a particular hostname, username, Wi-Fi name, password, keyboard layout, locale, timezone, or storage brand. The selected user only needs `sudo` access, and the Pi needs enough free space plus an internet connection during installation.
+Express identifiers such as `6X`, `7X`, and `FX` are handled automatically with the corresponding 6, 7, or F selection. LIRR and Metro-North are intentionally not included because TrainUI is focused on New York City subway and Staten Island Railway service.
 
-Other Debian-based Raspberry Pi OS variants may work, and the installer can add a desktop to Raspberry Pi OS Lite, but those configurations are not the currently tested target.
+The selected train and station control:
+
+- Station name and borough/service subtitle.
+- Official route badge colors.
+- Both directional MTA stop IDs and direction labels.
+- The correct MTA realtime arrival feed.
+- Route- and station-specific service alerts.
+
+Long station names and direction labels automatically shrink to fit. The departure cards keep the same dimensions regardless of the selected station.
+
+## Main project hardware
+
+The primary TrainUI build intentionally uses inexpensive, simple hardware.
+
+| Component | Main project choice | Why it was selected |
+|---|---|---|
+| Computer | Original Raspberry Pi Zero W—not the newer Zero 2 W | It is small, inexpensive, Wi-Fi capable, and powerful enough for this focused display. |
+| Operating system | Current, non-legacy Raspberry Pi OS (32-bit) with Desktop | This is the officially tested software target for the original Pi Zero W. |
+| Display | [HAMTYSAN 10.1-inch HDMI monitor, Amazon ASIN B0FMF3RTPC](https://www.amazon.com/dp/B0FMF3RTPC) | It was inexpensive, driver-free, non-touch, and straightforward to integrate. |
+| Enclosure | Custom three-part 3D-printed case | It keeps the project compact and allows the display and Pi to be assembled into one purpose-built unit. |
+
+### Display used by the main build
+
+The linked HAMTYSAN display is a 10.1-inch, 1024×600 IPS LCD with a 16:9 aspect ratio and HDMI input. It is a normal non-touch monitor and does not require a special display driver. Those details matter to the design: TrainUI is intended to behave like a passive station sign, not a tablet or interactive touchscreen.
+
+Other HDMI displays may work, but the main enclosure and future CAD files are being designed around this exact screen. A different panel may require changes to mounting holes, clearances, cable routing, screen rotation, or the printed enclosure.
+
+### Raspberry Pi used by the main build
+
+The reference unit uses the original Raspberry Pi Zero W. The older Zero W was chosen primarily because it is cheap and compact. TrainUI deliberately keeps the interface lightweight so it can run continuously on that hardware.
+
+This repository may also work on newer Raspberry Pis, but the original Zero W with current Raspberry Pi OS (32-bit) is the main supported build—not the Zero 2 W and not a 64-bit-only setup.
+
+## Enclosure and CAD
+
+The physical enclosure is 3D printed in three separate parts. The pieces are designed to be assembled using heat-set threaded inserts and fasteners through matching holes instead of relying on glue or permanent snap fits. This makes the case easier to assemble, reopen, and revise while the hardware design is still being developed.
+
+The [`CAD`](CAD/) folder is reserved for the printable and editable enclosure files. The CAD models are still being designed and will be added there when the three-part enclosure is finished. Until those files are published, the software can be installed and tested independently of the final printed case.
+
+## Before installation
+
+Use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) to install the current, non-legacy **Raspberry Pi OS (32-bit) with Desktop** image.
+
+Configure these items in Raspberry Pi Imager:
+
+- Connect the Pi to Wi-Fi or plan to use Ethernet with internet access.
+- Enable SSH.
+- Create any username and password. The user must have `sudo` access.
+- Choose any hostname.
+- Set whatever locale, keyboard, and timezone are appropriate for the installation.
+
+The hostname, username, password, Wi-Fi name, IP address, locale, timezone, and storage brand do not need to match the reference build. SSH and internet access are the important requirements. The Pi Zero W only supports 2.4 GHz Wi-Fi, so its saved network must offer a compatible 2.4 GHz connection.
+
+Attach the HDMI display before the first TrainUI boot. The main installation rotates the active output 270°.
 
 ## One-command installation
 
-SSH into the Pi from another computer:
+From another computer, connect to the Pi over SSH:
 
 ```bash
 ssh YOUR_USERNAME@YOUR_PI_HOSTNAME.local
 ```
 
-Then run:
+An IP address can be used instead when `.local` hostname discovery is unavailable:
+
+```bash
+ssh YOUR_USERNAME@192.168.1.123
+```
+
+Run the installer as the normal Raspberry Pi user:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/installer/install.sh | bash
 ```
 
-Do **not** add `sudo` before the command. The installer asks you to choose a train and then a station, asks for your password when elevated access is needed, completes the entire setup, and reboots the Pi. The numbered menu includes the 1–7 trains, all lettered subway services, all three subway shuttles, and Staten Island Railway. It does not include LIRR or Metro-North.
+Do not place `sudo` before this command. The installer requests elevated access only for the system changes that require it.
 
-After reboot, TrainUI launches automatically in fullscreen and applies a 270° display rotation.
+The installer displays a numbered train menu followed by a numbered list of stations served by the chosen train. A first installation requires a real selection from an interactive SSH terminal; it does not silently choose a train or station.
 
-## What the installer does
+After setup, the Pi reboots and launches TrainUI automatically.
+
+## Changing the train or station later
+
+SSH into the Pi and rerun the same installer command whenever the display needs to use another route or station:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/installer/install.sh | bash
+```
+
+The installer shows the current selection and asks whether to keep it. Answer `n` to return to the train and station menus. The new selection is saved and used after the installer finishes and reboots.
+
+Rerunning the installer also updates TrainUI and its Python environment. A clean checkout updates in place. If `~/TrainUI` contains local edits, local commits, or a damaged checkout, the installer preserves it as a timestamped `~/TrainUI.backup.*` folder before installing a clean copy.
+
+The selected route and station are stored in:
+
+```text
+~/.config/trainui/config.json
+```
+
+That file lives outside the Git checkout, so a normal update or clean reinstall preserves the chosen configuration.
+
+## What the installer configures
 
 The installer:
 
-1. Installs the desktop, display, Python, font, and networking dependencies.
-2. Clones this repository into `~/TrainUI`.
-3. Prompts for a train and one of the stations served by that train using the bundled official MTA catalog.
-4. Stores the selection outside the Git checkout in `~/.config/trainui/config.json` so updates preserve it.
-5. Creates an isolated Python environment and installs [`requirements.txt`](requirements.txt).
-6. Validates the Python source and required imports.
-7. Creates `~/TrainUI/run_trainui.sh` to rotate the active display and launch the app.
-8. Registers desktop autostart for both current Wayland/labwc and older X11 Raspberry Pi OS releases.
-9. Applies network-agnostic Wi-Fi reliability settings and enables automatic reconnection checks.
-10. Enables desktop auto-login, prevents blanking and sleep, and reboots the Pi.
+1. Installs the required desktop, display, Python, font, and networking packages.
+2. Clones or refreshes TrainUI in `~/TrainUI`.
+3. Prompts for the train and station and saves that selection persistently.
+4. Creates an isolated Python environment and installs the required libraries.
+5. Validates the Python source and imports.
+6. Creates `~/TrainUI/run_trainui.sh` to rotate the display and launch TrainUI.
+7. Enables automatic startup for current Wayland/labwc and older X11 Raspberry Pi OS desktops.
+8. Applies network-agnostic Wi-Fi reliability settings without rewriting saved SSIDs or passwords.
+9. Prevents desktop, console, and system sleep or blanking.
+10. Enables graphical auto-login and reboots the Pi.
 
-Running the install command again updates an existing installation. A clean checkout is updated in place. If the app folder contains local edits, local commits, or a damaged checkout, the installer preserves the old folder as a timestamped `~/TrainUI.backup.*` directory and installs a fresh copy automatically.
+## Data and on-screen information
+
+Arrival times come from the MTA's public GTFS-Realtime subway feeds and refresh every 30 seconds. Service alerts come from the MTA alert feed and are filtered for the selected route or station. The train/station catalog is generated from the official MTA static subway GTFS and Subway Stations datasets.
+
+The weather panel is independent of the selected station and continues to show New York City conditions through Open-Meteo. The clock and date come from the Raspberry Pi. The system-health panel continues to show CPU temperature, RAM, storage, load, uptime, IP address, network connection, and transfer speeds.
+
+No MTA or weather API key is required.
 
 ## Always-on reliability
 
-TrainUI is configured as a dedicated kiosk during installation:
+TrainUI is configured as a dedicated kiosk:
 
-- Wi-Fi power saving is disabled globally when NetworkManager is present and at the driver level when supported.
-- The installer never rewrites a saved network name, password, or individual NetworkManager profile.
-- A watchdog discovers available wireless interfaces and asks the OS to reconnect an existing saved connection when one drops.
-- A lightweight systemd timer checks the interface every 30 seconds and reconnects it only when it has dropped.
-- Raspberry Pi desktop blanking and console blanking are disabled.
-- X11 screensaver/DPMS, system login idle actions, suspend, and hibernation are disabled.
-- The launcher keeps the active Wayland or X11 display awake while TrainUI runs.
+- Wi-Fi power saving is disabled globally when NetworkManager is present and at the interface level when supported.
+- A lightweight timer checks wireless connectivity every 30 seconds.
+- The watchdog discovers interfaces automatically and reuses the connection already saved by Raspberry Pi OS.
+- The installer never embeds or rewrites an SSID or Wi-Fi password.
+- Ethernet-only systems are left alone.
+- Desktop blanking, console blanking, X11 DPMS, suspend, and hibernation are disabled.
+- The launcher keeps the active Wayland or X11 output awake while TrainUI runs.
+- TrainUI keeps retrying when MTA, weather, or internet service is temporarily unavailable.
 
-The watchdog reuses the Wi-Fi credentials already saved by Raspberry Pi OS; the repository and watchdog contain no SSID or password. Ethernet-only systems are left alone. No software can guarantee connectivity when the router, internet service, power, or Wi-Fi signal is unavailable, but TrainUI will automatically recover when the saved network becomes available again.
-
-## Data and defaults
-
-| Feature | Default |
-|---|---|
-| Station | Bay 50 St, Brooklyn |
-| Train | D train |
-| Northbound stop | `B23N` |
-| Southbound stop | `B23S` |
-| Weather location | `40.587, -73.984` |
-| Train refresh | Every 30 seconds |
-| Rotation | 270° |
-| API keys | None |
-
-Bay 50 St and the D train remain the fallback only when the installer has no interactive terminal and no saved selection. Normally, the installer writes the selected route, station, borough, two MTA direction labels, realtime feed, route IDs, and official route colors to `~/.config/trainui/config.json`.
-
-Arrival and route-specific alert data comes from the MTA's public GTFS-Realtime feeds. The selectable catalog is generated from the MTA's official static subway GTFS and Subway Stations datasets. Weather comes from Open-Meteo.
+No software can compensate for incorrect credentials, a router outage, weak signal, lost power, or an incompatible Wi-Fi band.
 
 ## Useful commands
 
-View the live runtime log:
+View the runtime log:
 
 ```bash
 tail -f ~/TrainUI/trainui.log
-```
-
-Check the automatic Wi-Fi recovery timer:
-
-```bash
-systemctl status trainui-connectivity.timer
-sudo journalctl -u trainui-connectivity.service --since today
 ```
 
 Restart the interface without rebooting:
@@ -119,91 +182,104 @@ pkill -f timertest.py || true
 ~/TrainUI/run_trainui.sh &
 ```
 
-Update or reinstall TrainUI by rerunning the one-command installer. It refreshes the repository and Python environment, then reboots. If you edited files directly on the Pi, your previous folder is retained as `~/TrainUI.backup.*` while the current GitHub version is installed cleanly.
+Check the connectivity timer:
 
-Change the selected train or station at any time:
+```bash
+systemctl status trainui-connectivity.timer
+sudo journalctl -u trainui-connectivity.service --since today
+```
+
+Run the route/station selector directly:
 
 ```bash
 python3 ~/TrainUI/installer/configure.py --config ~/.config/trainui/config.json
 sudo reboot
 ```
 
-## Train and station behavior
-
-The selected configuration changes the station heading, borough/service subtitle, MTA route badge and colors, direction labels, directional GTFS stop IDs, realtime arrival feed, and service-alert filter. Long station and direction names automatically use a smaller font while their cards retain the same dimensions.
-
-Express variants such as `6X`, `7X`, and `FX` are included automatically with their corresponding 6, 7, or F selection. The three shuttle choices are shown separately as 42 St Shuttle, Franklin Av Shuttle, and Rockaway Park Shuttle.
-
-After changing the saved selection, reboot to reload it:
-
-```bash
-sudo reboot
-```
+Rerunning the complete `curl` installer is the recommended method because it changes the selection and updates the project in one operation.
 
 ## Troubleshooting
 
-**The SSH connection fails**
+### SSH does not connect
 
-Confirm the Pi is powered on, connected to the same network, and that SSH was enabled in Raspberry Pi Imager. Try the Pi's IP address if `.local` hostname discovery is unavailable:
+Confirm that SSH was enabled in Raspberry Pi Imager and that the Pi is connected to the network. Try the Pi's IP address if its `.local` hostname is unavailable.
 
-```bash
-ssh YOUR_USERNAME@192.168.1.123
-```
+### TrainUI does not appear after reboot
 
-**TrainUI does not appear after reboot**
-
-Inspect the log:
+Confirm that the Pi reaches the graphical desktop, then inspect:
 
 ```bash
 tail -n 100 ~/TrainUI/trainui.log
 ```
 
-Also confirm the Pi reaches the graphical desktop and has internet access.
+### The installer says no interactive terminal is available
 
-**The screen is rotated the wrong way**
+The first installation must be run directly inside an interactive SSH session so the train and station menus can accept input. Do not run the command from a detached job, unattended provisioning service, or another script that removes the terminal.
 
-The supplied display setup expects 270°. Edit `--transform 270` and `--rotate left` in `~/TrainUI/run_trainui.sh` if your screen is mounted differently. That runner is regenerated whenever the installer runs.
+### Arrivals or alerts are unavailable
 
-**Arrival data is unavailable**
+Check internet access and the runtime log. Some routes only operate during certain hours, and some stations may only receive a selected service during a limited service pattern. TrainUI continues retrying automatically.
 
-Check internet access and the runtime log. TrainUI starts even if the MTA endpoint is temporarily unavailable and continues retrying from the app.
+### Wi-Fi repeatedly disconnects
 
-**Wi-Fi repeatedly drops**
-
-Check signal strength and the watchdog status:
+Check the signal and saved Raspberry Pi OS connection:
 
 ```bash
 nmcli device wifi list
 systemctl status trainui-connectivity.timer
 ```
 
-The Pi Zero W supports 2.4 GHz Wi-Fi, so confirm that the configured network offers a compatible 2.4 GHz signal. The watchdog can reconnect a saved network, but it cannot fix weak signal strength, router outages, or incorrect credentials.
+For the original Pi Zero W, verify that the network offers 2.4 GHz Wi-Fi.
 
-**The display still powers itself off**
+### The screen is rotated incorrectly
 
-TrainUI disables Raspberry Pi OS blanking, DPMS, and system sleep and periodically wakes a disabled software output. If the screen's own hardware menu has an independent sleep timer, eco mode, or auto-off option, disable that setting with the monitor's physical controls as well.
+The main enclosure expects 270° rotation. The generated launcher contains `wlr-randr --transform 270` for Wayland and `xrandr --rotate left` for X11. A differently mounted display may require changing those values in `~/TrainUI/run_trainui.sh`; rerunning the installer regenerates that file.
+
+### The display still turns itself off
+
+TrainUI disables Raspberry Pi OS software blanking and sleep. If the monitor has its own hardware sleep timer, eco mode, or auto-off setting, disable that through the monitor's controls.
+
+## Development and validation
+
+The repository includes automated checks for every catalog entry and a live-feed validator covering all eight MTA subway/SIR realtime endpoints.
+
+```bash
+python3 -m unittest discover -s tests -v
+python3 tests/validate_live_feeds.py
+python3 timertest.py --smoke-test
+```
+
+The generated route catalog can be refreshed from current official MTA data with:
+
+```bash
+python3 installer/build_subway_catalog.py
+```
 
 ## Project layout
 
 ```text
 TrainUI/
+├── CAD/
+│   └── README.md                  # Placeholder for the three-part enclosure CAD
 ├── installer/
 │   ├── systemd/
 │   │   ├── trainui-connectivity.service
 │   │   └── trainui-connectivity.timer
-│   ├── build_subway_catalog.py # Refresh catalog from official MTA data
-│   ├── configure.py       # Interactive train/station selector
+│   ├── build_subway_catalog.py    # Rebuild catalog from official MTA data
+│   ├── configure.py               # Interactive train/station selector
 │   ├── connectivity-watchdog.sh
-│   ├── subway_catalog.json # Generated subway/SIR route and station data
-│   └── install.sh         # Complete Raspberry Pi setup
-├── requirements.txt     # Python packages
-├── tests/                # Catalog matrix and live-feed validation
-├── timertest.py         # TrainUI application
+│   ├── install.sh                 # Complete Raspberry Pi setup
+│   └── subway_catalog.json        # Generated subway/SIR route and station catalog
+├── tests/
+│   ├── test_catalog.py
+│   └── validate_live_feeds.py
+├── requirements.txt
+├── timertest.py
 └── README.md
 ```
 
 ---
 
 <div align="center">
-Built for a glanceable, dedicated Raspberry Pi transit display.
+Built as a low-cost, glanceable NYC transit display for the original Raspberry Pi Zero W.
 </div>
