@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Fullscreen D-train departure board for a Raspberry Pi display with fluid animations and rounded cards."""
+"""Fullscreen D-train departure board with a fully static low-power background."""
 
 import math
 import os
@@ -14,7 +14,6 @@ from datetime import datetime
 
 import requests
 from google.transit import gtfs_realtime_pb2
-from PIL import Image, ImageTk
 
 # ---- Configuration -------------------------------------------------------
 STATION_NAME = "Bay 50 St"
@@ -40,6 +39,9 @@ BG = "#030914"
 CARD = "#071321"
 CARD_BLUE = "#091936"
 BORDER = "#203555"
+# Opaque low-power card aliases.
+GLASS_CARD = CARD
+GLASS_BORDER = BORDER
 WHITE = "#f5f8ff"
 MUTED = "#94aad0"
 DIM = "#4d6385"
@@ -57,10 +59,14 @@ GAP = 12
 def weather_text(code):
     """Turn Open-Meteo WMO weather code into a short readable phrase."""
     names = {0: "Clear", 1: "Mostly clear", 2: "Partly cloudy", 3: "Overcast",
-             45: "Foggy", 48: "Foggy", 51: "Light drizzle", 53: "Drizzle",
-             55: "Heavy drizzle", 61: "Light rain", 63: "Rain", 65: "Heavy rain",
-             71: "Light snow", 73: "Snow", 75: "Heavy snow", 80: "Rain showers",
-             81: "Rain showers", 82: "Heavy showers", 95: "Thunderstorms"}
+             45: "Foggy", 48: "Freezing fog", 51: "Light drizzle", 53: "Drizzle",
+             55: "Heavy drizzle", 56: "Freezing drizzle", 57: "Heavy freezing drizzle",
+             61: "Light rain", 63: "Rain", 65: "Heavy rain", 66: "Freezing rain",
+             67: "Heavy freezing rain", 71: "Light snow", 73: "Snow", 75: "Heavy snow",
+             77: "Snow grains", 80: "Rain showers", 81: "Rain showers",
+             82: "Heavy showers", 85: "Snow showers", 86: "Heavy snow showers",
+             95: "Thunderstorms", 96: "Thunderstorms with hail",
+             99: "Severe thunderstorms with hail"}
     return names.get(code, "Conditions unavailable")
 
 
@@ -125,14 +131,21 @@ class RoundedCard(tk.Canvas):
         self.bind("<Configure>", self._draw)
 
     def config(self, cnf=None, **kwargs):
-        if 'bg' in kwargs:
-            self.bg_color = kwargs['bg']
-        elif cnf and 'bg' in cnf:
-            self.bg_color = cnf['bg']
-        super().config(cnf, **kwargs)
+        # ``bg`` controls the rounded card fill, not the square Canvas corners.
+        # The outer Canvas color is managed separately to match the backdrop.
+        options = dict(kwargs)
+        if "bg" in options:
+            self.bg_color = options.pop("bg")
+        if cnf and isinstance(cnf, dict) and "bg" in cnf:
+            cnf = dict(cnf)
+            self.bg_color = cnf.pop("bg")
+        super().config(cnf, **options)
         self._draw()
 
     configure = config
+
+    def set_outer_bg(self, color):
+        tk.Canvas.configure(self, bg=color)
 
     def _draw(self, event=None):
         self.delete("card_bg")
@@ -170,6 +183,13 @@ class RoundedCard(tk.Canvas):
         return self.create_polygon(points, smooth=True, **kwargs)
 
 
+class StaticBackground(tk.Frame):
+    """Plain, zero-animation background for maximum Raspberry Pi Zero W performance."""
+
+    def __init__(self, parent):
+        super().__init__(parent, bg=BG, bd=0, highlightthickness=0)
+
+
 class Dashboard(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -198,6 +218,9 @@ class Dashboard(tk.Tk):
         self.last_net_time = time.time()
 
         self._build_ui()
+        # Freeze cards that contain changing network text so updates cannot
+        # alter the overall screen proportions.
+        self.after_idle(self._lock_dynamic_card_sizes)
         self.bind("<Escape>", lambda _event: self.destroy())
         self.bind("<F11>", lambda _event: self.attributes("-fullscreen", not self.attributes("-fullscreen")))
 
@@ -215,39 +238,39 @@ class Dashboard(tk.Tk):
         return tk.Label(parent, text=text, bg=parent.cget("bg"), fg=color,
                         font=("DejaVu Sans", size, weight), **kwargs)
 
-    def card(self, parent, color=CARD):
-        return RoundedCard(parent, bg=color, border_color=BORDER, radius=16)
+    def card(self, parent, color=GLASS_CARD, border_color=GLASS_BORDER):
+        return RoundedCard(parent, bg=color, border_color=border_color, radius=16)
 
     def _build_ui(self):
-        # Root frame handles the master padding around the entire screen
-        root = tk.Frame(self, bg=BG)
+        # Plain static layout background with no stars, planets, particles,
+        # weather effects, redraw loop, or background animation.
+        root = StaticBackground(self)
         root.pack(fill="both", expand=True, padx=GAP, pady=GAP)
 
         root.grid_columnconfigure(0, weight=1, uniform="col")
         root.grid_columnconfigure(1, weight=1, uniform="col")
 
-        # Set up grid rows. Row 5 is expanded to let bottom cards stretch down to the footer.
         root.grid_rowconfigure(0, weight=0)  # Top Hero Header
         root.grid_rowconfigure(1, weight=0)  # Departures
-        root.grid_rowconfigure(2, weight=0)  # Service Status (Ticker)
+        root.grid_rowconfigure(2, weight=0)  # Service Status
         root.grid_rowconfigure(3, weight=0)  # Weather
-        root.grid_rowconfigure(4, weight=0)  # Spacer
-        root.grid_rowconfigure(5, weight=1)  # Bottom 50/50 Row (Expanded vertically)
-        root.grid_rowconfigure(6, weight=0)  # Footer Line
+        root.grid_rowconfigure(4, weight=0)  # Zero-height spacer
+        root.grid_rowconfigure(5, weight=1)  # Full-width System Health
+        root.grid_rowconfigure(6, weight=0)  # Footer
 
         # ---------------- 1. Connected Top Hero Header (Row 0) ----------------
-        hero = self.card(root)
+        hero = self.card(root, GLASS_CARD)
         hero.grid(row=0, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
         hero.grid_columnconfigure(0, weight=1)
         hero.grid_columnconfigure(1, weight=1)
 
-        hero_left = tk.Frame(hero, bg=CARD)
+        hero_left = tk.Frame(hero, bg=GLASS_CARD)
         hero_left.grid(row=0, column=0, sticky="w", padx=18, pady=8)
 
-        live_frame = tk.Frame(hero_left, bg=CARD)
+        live_frame = tk.Frame(hero_left, bg=GLASS_CARD)
         live_frame.pack(anchor="w")
 
-        self.live_canvas = tk.Canvas(live_frame, width=32, height=24, bg=CARD, highlightthickness=0)
+        self.live_canvas = tk.Canvas(live_frame, width=32, height=24, bg=GLASS_CARD, highlightthickness=0)
         self.live_canvas.pack(side="left")
 
         self.pulse_ring_outer = self.live_canvas.create_oval(0, 0, 0, 0, fill="", outline="", width=2)
@@ -257,13 +280,13 @@ class Dashboard(tk.Tk):
         self.live = self.label(live_frame, "LIVE DEPARTURES", 11, CYAN, "bold")
         self.live.pack(side="left")
 
-        clock_frame = tk.Frame(hero_left, bg=CARD)
+        clock_frame = tk.Frame(hero_left, bg=GLASS_CARD)
         clock_frame.pack(anchor="w", pady=(1, 0))
 
         self.clock_hours = self.label(clock_frame, "--", 50, WHITE, "bold")
         self.clock_hours.pack(side="left")
 
-        self.colon_canvas = tk.Canvas(clock_frame, width=20, height=58, bg=CARD, highlightthickness=0)
+        self.colon_canvas = tk.Canvas(clock_frame, width=20, height=58, bg=GLASS_CARD, highlightthickness=0)
         self.colon_canvas.pack(side="left", padx=2)
         self.colon_canvas.create_oval(6, 18, 14, 26, fill=WHITE, outline="")
         self.colon_canvas.create_oval(6, 36, 14, 44, fill=WHITE, outline="")
@@ -274,21 +297,17 @@ class Dashboard(tk.Tk):
         self.date = self.label(hero_left, "", 16, MUTED, "bold")
         self.date.pack(anchor="w")
 
-        hero_right = tk.Frame(hero, bg=CARD)
+        hero_right = tk.Frame(hero, bg=GLASS_CARD)
         hero_right.grid(row=0, column=1, sticky="e", padx=18, pady=8)
         self.label(hero_right, STATION_NAME, 26, WHITE, "bold").pack(anchor="e")
         self.label(hero_right, STATION_SUBTITLE, 15, MUTED, "bold").pack(anchor="e", pady=(4, 0))
 
         # ---------------- 2. Train Departures Section (Row 1) ----------------
-        departures = tk.Frame(root, bg=BG)
-        departures.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
-        departures.grid_columnconfigure((0, 1), weight=1, uniform="dept")
-
-        self.north = self._departure_card(departures, 0, "Manhattan")
-        self.south = self._departure_card(departures, 1, "Coney Island")
+        self.north = self._departure_card(root, 0, "Manhattan", row=1)
+        self.south = self._departure_card(root, 1, "Coney Island", row=1)
 
         # ---------------- 3. Service Status (Row 2) ----------------
-        self.status_card = self.card(root, "#08202a")
+        self.status_card = self.card(root, "#08202a", BORDER)
         self.status_card.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
 
         status_inner = tk.Frame(self.status_card, bg="#08202a")
@@ -316,16 +335,17 @@ class Dashboard(tk.Tk):
             self.ticker_text_width = bbox[2] - bbox[0]
 
         # ---------------- 4. Weather Section (Row 3) ----------------
-        weather = self.card(root, CARD_BLUE)
-        weather.grid(row=3, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
+        self.weather_card = self.card(root, GLASS_CARD, GLASS_BORDER)
+        self.weather_card.grid(row=3, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
+        weather = self.weather_card
 
-        weather_left = tk.Frame(weather, bg=CARD_BLUE)
+        weather_left = tk.Frame(weather, bg=GLASS_CARD)
         weather_left.pack(side="left", padx=18, pady=8)
         self.label(weather_left, "WEATHER", 11, MUTED, "bold").pack(anchor="w")
         self.weather_temp = self.label(weather_left, "--\u00b0F", 32, WHITE, "bold")
         self.weather_temp.pack(anchor="w")
 
-        weather_right = tk.Frame(weather, bg=CARD_BLUE)
+        weather_right = tk.Frame(weather, bg=GLASS_CARD)
         weather_right.pack(side="left", padx=(24, 18), pady=8)
         self.weather_cond = self.label(weather_right, "Connecting weather...", 14, WHITE, "bold")
         self.weather_cond.pack(anchor="w", pady=(4, 2))
@@ -333,99 +353,93 @@ class Dashboard(tk.Tk):
         self.weather_humidity.pack(anchor="w", pady=(0, 0))
 
         # ---------------- Spacer (Row 4) ----------------
-        spacer = tk.Frame(root, bg=BG, height=0)
+        spacer = tk.Frame(root, bg=root.cget("bg"), height=0)
         spacer.grid(row=4, column=0, columnspan=2, sticky="ew")
 
-        # ---------------- 5. Bottom Row: 50/50 Split (Row 5 - Expanded) ----------------
-        bottom_container = tk.Frame(root, bg=BG)
-        bottom_container.grid(row=5, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
-        bottom_container.grid_columnconfigure(0, weight=1, uniform="bot")
-        bottom_container.grid_columnconfigure(1, weight=1, uniform="bot")
-        bottom_container.grid_rowconfigure(0, weight=1)
+        # ---------------- 5. Full-width System Health (Row 5) ----------------
+        sys_card = self.card(root, GLASS_CARD)
+        sys_card.grid(
+            row=5, column=0, columnspan=2,
+            sticky="nsew", pady=(0, GAP)
+        )
 
-        # Left 50% Card: System Health Stats
-        sys_card = self.card(bottom_container, CARD)
-        sys_card.grid(row=0, column=0, sticky="nsew", padx=(0, GAP // 2))
+        sys_inner = tk.Frame(sys_card, bg=GLASS_CARD)
+        sys_inner.pack(fill="both", expand=True, padx=22, pady=12)
 
-        sys_inner = tk.Frame(sys_card, bg=CARD)
-        sys_inner.pack(fill="both", expand=True, padx=18, pady=12)
+        self.label(
+            sys_inner, "SYSTEM HEALTH", 11, MUTED, "bold"
+        ).pack(anchor="w", pady=(0, 6))
 
-        self.label(sys_inner, "SYSTEM HEALTH", 11, MUTED, "bold").pack(anchor="w", pady=(0, 6))
-        
-        stats_wrapper = tk.Frame(sys_inner, bg=CARD)
-        stats_wrapper.pack(fill="both", expand=True, padx=0, pady=(12, 0))
+        stats_wrapper = tk.Frame(sys_inner, bg=GLASS_CARD)
+        stats_wrapper.pack(fill="both", expand=True, anchor="nw")
 
-        self.cpu_temp_label = self.label(stats_wrapper, "CPU Temp: --\u00b0F", 11, WHITE, "bold")
-        self.cpu_temp_label.pack(anchor="w", pady=2)
-        self.ram_label = self.label(stats_wrapper, "RAM: --%", 11, WHITE, "bold")
-        self.ram_label.pack(anchor="w", pady=2)
-        self.disk_label = self.label(stats_wrapper, "Disk: --%", 11, WHITE, "bold")
-        self.disk_label.pack(anchor="w", pady=2)
-        self.load_label = self.label(stats_wrapper, "Load Avg: --", 11, WHITE, "bold")
-        self.load_label.pack(anchor="w", pady=2)
-        self.uptime_label = self.label(stats_wrapper, "Uptime: --", 11, WHITE, "bold")
-        self.uptime_label.pack(anchor="w", pady=2)
-        self.ip_label = self.label(stats_wrapper, "IP: --", 11, WHITE, "bold")
-        self.ip_label.pack(anchor="w", pady=2)
-        self.net_label = self.label(stats_wrapper, "Connection: --", 11, WHITE, "bold")
-        self.net_label.pack(anchor="w", pady=2)
-        self.down_speed_label = self.label(stats_wrapper, "Download: --", 11, WHITE, "bold")
-        self.down_speed_label.pack(anchor="w", pady=2)
-        self.up_speed_label = self.label(stats_wrapper, "Upload: --", 11, WHITE, "bold")
-        self.up_speed_label.pack(anchor="w", pady=2)
+        label_options = {
+            "size": 11,
+            "color": WHITE,
+            "weight": "bold",
+            "anchor": "w",
+            "justify": "left",
+        }
 
-        # Right 50% Card: Logo Image Box (Scaled up to maximum bounds within the rounded card)
-        res_card = self.card(bottom_container, CARD)
-        res_card.grid(row=0, column=1, sticky="nsew", padx=(GAP // 2, 0))
+        self.cpu_temp_label = self.label(stats_wrapper, "CPU Temp: --\u00b0F", **label_options)
+        self.ram_label = self.label(stats_wrapper, "RAM: --%", **label_options)
+        self.disk_label = self.label(stats_wrapper, "Disk: --%", **label_options)
+        self.load_label = self.label(stats_wrapper, "Load Avg: --", **label_options)
+        self.uptime_label = self.label(stats_wrapper, "Uptime: --", **label_options)
+        self.ip_label = self.label(stats_wrapper, "IP: --", **label_options)
+        self.net_label = self.label(stats_wrapper, "Connection: --", **label_options)
+        self.down_speed_label = self.label(stats_wrapper, "Download: --", **label_options)
+        self.up_speed_label = self.label(stats_wrapper, "Upload: --", **label_options)
 
-        res_inner = tk.Frame(res_card, bg=CARD)
-        res_inner.pack(fill="both", expand=True, padx=0, pady=0)
-
-        self.logo_image_raw = None
-        self.logo_photo = None
-
-        try:
-            if os.path.exists("logo.png"):
-                self.logo_image_raw = Image.open("logo.png")
-        except Exception:
-            pass
-
-        self.logo_label = tk.Label(res_inner, bg=CARD)
-        self.logo_label.pack(expand=True, fill="both")
-
-        def _on_res_resize(event):
-            size = max(10, min(event.width, event.height))
-            if self.logo_image_raw:
-                resized_img = self.logo_image_raw.resize((size, size), Image.Resampling.LANCZOS)
-                self.logo_photo = ImageTk.PhotoImage(resized_img)
-                self.logo_label.config(image=self.logo_photo, text="")
-            else:
-                self.logo_label.config(text="logo.png missing", fg=DIM, font=("DejaVu Sans", 9, "bold"), image="")
-
-        res_inner.bind("<Configure>", _on_res_resize)
+        stat_labels = [
+            self.cpu_temp_label, self.ram_label, self.disk_label,
+            self.load_label, self.uptime_label, self.ip_label,
+            self.net_label, self.down_speed_label, self.up_speed_label,
+        ]
+        for stat_label in stat_labels:
+            stat_label.pack(anchor="w", fill="x", pady=2)
 
         # ---------------- 6. Footer Line (Row 6) ----------------
         self.footer = self.label(root, self.last_updated, 10, DIM, "bold")
         self.footer.grid(row=6, column=0, columnspan=2, sticky="w", pady=(0, 0))
 
-    def _departure_card(self, parent, column, destination):
+    def _lock_dynamic_card_sizes(self):
+        """Lock Weather and Service Status to their initial rendered heights.
+
+        Tk normally lets a child label update its requested geometry. These two
+        cards display changing external text, so their requested size could
+        otherwise shift the rows around. Capturing the initial height and then
+        disabling propagation keeps every section perfectly stable.
+        """
+        self.update_idletasks()
+
+        for row, card in ((2, self.status_card), (3, self.weather_card)):
+            locked_height = max(1, card.winfo_height())
+            card.configure(height=locked_height)
+            card.pack_propagate(False)
+            self.space_background.grid_rowconfigure(row, minsize=locked_height)
+
+    def _departure_card(self, parent, column, destination, row=0):
         left_pad = 0 if column == 0 else GAP // 2
         right_pad = GAP // 2 if column == 0 else 0
 
-        frame = self.card(parent)
-        frame.grid(row=0, column=column, sticky="nsew", padx=(left_pad, right_pad))
+        frame = self.card(parent, GLASS_CARD)
+        frame.grid(
+            row=row, column=column, sticky="nsew",
+            padx=(left_pad, right_pad), pady=(0, GAP)
+        )
 
-        top = tk.Frame(frame, bg=CARD)
+        top = tk.Frame(frame, bg=GLASS_CARD)
         top.pack(fill="x", padx=14, pady=(8, 2))
 
-        badge = tk.Canvas(top, width=36, height=36, bg=CARD, highlightthickness=0)
+        badge = tk.Canvas(top, width=36, height=36, bg=GLASS_CARD, highlightthickness=0)
         badge.pack(side="left")
         badge.create_oval(2, 2, 34, 34, fill=ORANGE, outline="")
         badge.create_text(18, 18, text="D", fill="white", font=("DejaVu Sans", 17, "bold"))
 
         self.label(top, destination, 20, WHITE, "bold").pack(side="left", padx=(10, 0))
 
-        timetable = tk.Frame(frame, bg=CARD)
+        timetable = tk.Frame(frame, bg=GLASS_CARD)
         timetable.pack(fill="both", expand=True, padx=14, pady=(2, 8))
 
         next_time = self.label(timetable, "--", 38, CYAN, "bold", width=3, anchor="w")
@@ -699,14 +713,16 @@ class Dashboard(tk.Tk):
                 response = requests.get(WEATHER_URL, timeout=12)
                 response.raise_for_status()
                 current = response.json()["current"]
+                weather_code = int(current["weather_code"])
                 return (
                     round(current["temperature_2m"]),
-                    weather_text(current["weather_code"]),
+                    weather_text(weather_code),
                     round(current["wind_speed_10m"]),
-                    round(current["relative_humidity_2m"])
+                    round(current["relative_humidity_2m"]),
+                    weather_code
                 )
             except Exception:
-                return 72, "Conditions unavailable", 5, 50
+                return 72, "Conditions unavailable", 5, 50, 0
         self._background("weather", fetch)
         self.after(WEATHER_REFRESH_MS, self.refresh_weather)
 
@@ -804,9 +820,10 @@ class Dashboard(tk.Tk):
                 self.last_updated = f"UPDATED AT {time_str}"
                 self.footer.config(text=self.last_updated)
             elif kind == "weather":
-                temp, condition, wind, humidity = value
+                temp, condition, wind, humidity, weather_code = value
                 self.weather_temp.config(text="%s\u00b0F" % temp)
-                self.weather_cond.config(text="%s \u2022 %s mph wind" % (condition, wind))
+                weather_line = "%s \u2022 %s mph wind" % (condition, wind)
+                self.weather_cond.config(text=truncate(weather_line, 42))
                 self.weather_humidity.config(text="Humidity: %s%%" % humidity)
             elif kind == "status":
                 self._set_status(value)
