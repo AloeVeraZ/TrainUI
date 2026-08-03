@@ -27,7 +27,9 @@ Set these options while writing Raspberry Pi OS with [Raspberry Pi Imager](https
 > [!IMPORTANT]
 > The hostname, username, Wi-Fi network name, and IP address do **not** need to match the project. You only need the hostname or IP address to SSH into your own Pi.
 
-**Recommended:** Raspberry Pi OS (64-bit) with Desktop. Raspberry Pi OS Lite is also supported; the installer will add a desktop environment, so installation takes longer.
+**Officially supported setup:** the current, non-legacy **Raspberry Pi OS (32-bit) with Desktop** image. This is the configuration used on the Raspberry Pi Zero W. The installer has no dependency on a particular hostname, username, Wi-Fi name, password, keyboard layout, locale, timezone, or storage brand. The selected user only needs `sudo` access, and the Pi needs enough free space plus an internet connection during installation.
+
+Other Debian-based Raspberry Pi OS variants may work, and the installer can add a desktop to Raspberry Pi OS Lite, but those configurations are not the currently tested target.
 
 ## One-command installation
 
@@ -57,7 +59,7 @@ The installer:
 4. Validates the Python source and required imports.
 5. Creates `~/TrainUI/run_trainui.sh` to rotate the active display and launch the app.
 6. Registers desktop autostart for both current Wayland/labwc and older X11 Raspberry Pi OS releases.
-7. Disables Wi-Fi power saving and enables automatic reconnection checks.
+7. Applies network-agnostic Wi-Fi reliability settings and enables automatic reconnection checks.
 8. Enables desktop auto-login and prevents desktop, console, and system sleep blanking.
 9. Reboots the Pi.
 
@@ -67,14 +69,15 @@ Running the install command again updates an existing installation. A clean chec
 
 TrainUI is configured as a dedicated kiosk during installation:
 
-- Wi-Fi power saving is disabled globally and on every detected wireless interface.
-- Saved NetworkManager Wi-Fi profiles are set to reconnect indefinitely.
+- Wi-Fi power saving is disabled globally when NetworkManager is present and at the driver level when supported.
+- The installer never rewrites a saved network name, password, or individual NetworkManager profile.
+- A watchdog discovers available wireless interfaces and asks the OS to reconnect an existing saved connection when one drops.
 - A lightweight systemd timer checks the interface every 30 seconds and reconnects it only when it has dropped.
 - Raspberry Pi desktop blanking and console blanking are disabled.
 - X11 screensaver/DPMS, system login idle actions, suspend, and hibernation are disabled.
 - The launcher keeps the active Wayland or X11 display awake while TrainUI runs.
 
-The watchdog reuses the Wi-Fi credentials already saved by Raspberry Pi OS; the repository and watchdog contain no SSID or password. No software can guarantee connectivity when the router, internet service, power, or Wi-Fi signal is unavailable, but TrainUI will automatically recover when the saved network becomes available again.
+The watchdog reuses the Wi-Fi credentials already saved by Raspberry Pi OS; the repository and watchdog contain no SSID or password. Ethernet-only systems are left alone. No software can guarantee connectivity when the router, internet service, power, or Wi-Fi signal is unavailable, but TrainUI will automatically recover when the saved network becomes available again.
 
 ## Data and defaults
 

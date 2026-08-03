@@ -128,22 +128,15 @@ fi
 
 say "Hardening Wi-Fi reliability..."
 
-# NetworkManager uses 2 for disabled Wi-Fi power saving. The watchdog below
-# also applies this at the driver level and reconnects only when disconnected.
+# NetworkManager uses 2 for disabled Wi-Fi power saving. This global setting
+# contains no network name or credentials. Do not modify individual saved
+# connections: their names, backends, and permissions vary between systems.
 if command -v nmcli >/dev/null 2>&1; then
     sudo install -d -m 0755 /etc/NetworkManager/conf.d
     sudo tee /etc/NetworkManager/conf.d/90-trainui-wifi.conf >/dev/null <<'EOF'
 [connection]
 wifi.powersave=2
 EOF
-
-    while IFS=: read -r connection_uuid connection_type; do
-        [ "$connection_type" = "802-11-wireless" ] || continue
-        sudo nmcli connection modify uuid "$connection_uuid" \
-            connection.autoconnect yes \
-            connection.autoconnect-retries 0 \
-            802-11-wireless.powersave 2
-    done < <(nmcli -t -f UUID,TYPE connection show)
 fi
 
 if [ ! -f "$APP_DIR/installer/connectivity-watchdog.sh" ]; then
@@ -378,7 +371,7 @@ fi
 say "Installation complete."
 echo "The Pi will reboot in five seconds."
 echo "TrainUI will start automatically at 270 degrees."
-echo "Wi-Fi power saving is disabled and reconnection checks run every 30 seconds."
+echo "Network-agnostic Wi-Fi reliability checks run every 30 seconds."
 echo "Desktop, console, X11, Wayland, and system sleep blanking are disabled."
 echo "Runtime log: $LOG_FILE"
 

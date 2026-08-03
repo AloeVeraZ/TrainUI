@@ -5,6 +5,7 @@
 import math
 import os
 import queue
+import shutil
 import socket
 import subprocess
 import threading
@@ -101,23 +102,41 @@ def get_ip_address():
 
 
 def get_wifi_ssid():
-    try:
-        res = subprocess.run(["iwgetid", "-r"], capture_output=True, text=True, timeout=2)
-        if res.returncode == 0 and res.stdout.strip():
-            return res.stdout.strip()
-        res = subprocess.run(["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"], capture_output=True, text=True, timeout=2)
-        if res.returncode == 0:
-            for line in res.stdout.splitlines():
-                if line.startswith("yes:"):
-                    return line.split(":", 1)[1]
-        res = subprocess.run(["ip", "route", "show", "default"], capture_output=True, text=True, timeout=2)
-        if res.returncode == 0 and res.stdout.strip():
-            parts = res.stdout.split()
-            if "dev" in parts:
-                dev = parts[parts.index("dev") + 1]
-                return f"Connected ({dev})"
-    except Exception:
-        pass
+    if shutil.which("iwgetid"):
+        try:
+            res = subprocess.run(["iwgetid", "-r"], capture_output=True, text=True, timeout=2)
+            if res.returncode == 0 and res.stdout.strip():
+                return res.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    if shutil.which("nmcli"):
+        try:
+            res = subprocess.run(
+                ["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"],
+                capture_output=True, text=True, timeout=2,
+            )
+            if res.returncode == 0:
+                for line in res.stdout.splitlines():
+                    if line.startswith("yes:"):
+                        return line.split(":", 1)[1]
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    if shutil.which("ip"):
+        try:
+            res = subprocess.run(
+                ["ip", "route", "show", "default"],
+                capture_output=True, text=True, timeout=2,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                parts = res.stdout.split()
+                if "dev" in parts:
+                    dev = parts[parts.index("dev") + 1]
+                    return f"Connected ({dev})"
+        except (OSError, subprocess.SubprocessError):
+            pass
+
     return "Disconnected"
 
 
