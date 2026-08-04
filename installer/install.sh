@@ -16,6 +16,42 @@ say() {
     printf '\n\033[1;36m[TrainUI]\033[0m %s\n' "$*"
 }
 
+apt_get() {
+    local attempt=1
+    local max_attempts=20
+    local retry_delay=15
+    local apt_output
+
+    apt_output="$(mktemp)"
+
+    while true; do
+        # Raspberry Pi OS often starts PackageKit during boot. It can briefly
+        # own an APT lock while this installer is starting.
+        if sudo env DEBIAN_FRONTEND=noninteractive apt-get \
+            -o DPkg::Lock::Timeout=60 "$@" 2>&1 | tee "$apt_output"; then
+            rm -f "$apt_output"
+            return 0
+        fi
+
+        if ! grep -Eq \
+            'Could not get lock|Unable to (acquire|lock)|is another process using it' \
+            "$apt_output"; then
+            rm -f "$apt_output"
+            return 1
+        fi
+
+        if [ "$attempt" -ge "$max_attempts" ]; then
+            rm -f "$apt_output"
+            fail "APT is still busy after repeated retries. Wait for system updates to finish, then rerun this installer."
+        fi
+
+        say "Another system update is using APT. Waiting ${retry_delay} seconds before retrying ($attempt/$max_attempts)..."
+        sleep "$retry_delay"
+        attempt=$((attempt + 1))
+        : > "$apt_output"
+    done
+}
+
 fail() {
     printf '\n\033[1;31m[TrainUI ERROR]\033[0m %s\n' "$*" >&2
     exit 1
@@ -33,9 +69,9 @@ fi
 
 say "Installing Raspberry Pi and Python dependencies..."
 
-sudo apt-get update
+apt_get update
 
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+apt_get install -y \
     ca-certificates \
     curl \
     git \
@@ -57,13 +93,13 @@ if ! command -v labwc >/dev/null 2>&1 && \
     say "No graphical desktop detected. Installing one..."
 
     if apt-cache show rpd-wayland-core >/dev/null 2>&1; then
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        apt_get install -y \
             rpd-wayland-core \
             rpd-theme \
             rpd-preferences \
             lightdm
     elif apt-cache show raspberrypi-ui-mods >/dev/null 2>&1; then
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        apt_get install -y \
             raspberrypi-ui-mods \
             lightdm
     else
