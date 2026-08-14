@@ -1,16 +1,20 @@
 <div align="center">
 
-# 🚇 TrainUI
+# TrainUI
 
 ### An always-on New York City train departure board built around a Raspberry Pi Zero W
 
 Live arrivals · Service alerts · NYC weather · System health
 
-[![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-OS-C51A4A?logo=raspberrypi&logoColor=white)](https://www.raspberrypi.com/software/)
-[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![MTA](https://img.shields.io/badge/Data-MTA%20GTFS--Realtime-0039A6)](https://www.mta.info/developers)
+[![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-OS-111111?style=for-the-badge&logo=raspberrypi&logoColor=white)](https://www.raspberrypi.com/software/)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3f3f46?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![MTA](https://img.shields.io/badge/Data-MTA%20GTFS--Realtime-6b7280?style=for-the-badge&logoColor=white)](https://www.mta.info/developers)
+
+[Features](#what-trainui-supports) · [Hardware](#main-project-hardware) · [Install](#one-command-installation) · [Troubleshooting](#troubleshooting)
 
 </div>
+
+---
 
 TrainUI turns a Raspberry Pi and HDMI display into a dedicated, glanceable departure board for New York City subway and Staten Island Railway service. During installation, the owner chooses a train and then chooses a station served by that train. There is no preselected station or line.
 
