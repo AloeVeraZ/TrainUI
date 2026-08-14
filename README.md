@@ -6,9 +6,9 @@
 
 Live arrivals · Service alerts · NYC weather · System health
 
-[![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-OS-111111?style=for-the-badge&logo=raspberrypi&logoColor=white)](https://www.raspberrypi.com/software/)
-[![Python](https://img.shields.io/badge/Python-3.9%2B-3f3f46?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![MTA](https://img.shields.io/badge/Data-MTA%20GTFS--Realtime-6b7280?style=for-the-badge&logoColor=white)](https://www.mta.info/developers)
+[![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-OS-C51A4A?style=for-the-badge&logo=raspberrypi&logoColor=white&labelColor=8E1334)](https://www.raspberrypi.com/software/)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=for-the-badge&logo=python&logoColor=white&labelColor=255986)](https://www.python.org/)
+[![MTA](https://img.shields.io/badge/Data-MTA%20GTFS--Realtime-0039A6?style=for-the-badge&logoColor=white&labelColor=002D72)](https://www.mta.info/developers)
 
 [Features](#what-trainui-supports) · [Hardware](#main-project-hardware) · [Install](#one-command-installation) · [Troubleshooting](#troubleshooting)
 
