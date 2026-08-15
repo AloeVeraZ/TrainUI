@@ -10,6 +10,7 @@ Live arrivals · Service alerts · NYC weather · System health
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=for-the-badge&logo=python&logoColor=white&labelColor=255986)](https://www.python.org/)
 [![MTA](https://img.shields.io/badge/Data-MTA%20GTFS--Realtime-0039A6?style=for-the-badge&logoColor=white&labelColor=002D72)](https://www.mta.info/developers)
 
+<strong>Quick navigation:</strong><br>
 [Features](#what-trainui-supports) · [Hardware](#main-project-hardware) · [Install](#one-command-installation) · [Troubleshooting](#troubleshooting)
 
 </div>

@@ -11,6 +11,7 @@
 
 This folder is reserved for the 3D-printed enclosure models, printable exports, hardware notes, and assembly guidance for the TrainUI project.
 
+<strong>Quick navigation:</strong><br>
 [Hardware Overview](#hardware-overview) | [Enclosure Architecture](#enclosure-architecture) | [Development Status](#development-status) | [Back to TrainUI](../)
 
 </div>
