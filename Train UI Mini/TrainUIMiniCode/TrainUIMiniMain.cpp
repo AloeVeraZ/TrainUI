@@ -177,7 +177,7 @@ void renderDashboard() {
   display.rect(4,86,242,35);
   const String statusTitle = serviceAlert.isEmpty() ? "GOOD SERVICE" : "SERVICE ALERT";
   display.text(9,90,statusTitle,1);
-  String weatherLine=weather.valid ? String(weather.temperature)+"F "+weather.condition : "WEATHER --";
+  String weatherLine=weather.valid ? "TEMP "+String(weather.temperature)+"F" : "TEMP --";
   weatherLine=cleanDisplay(weatherLine,19);
   display.text(241-display.textWidth(weatherLine,1),90,weatherLine,1);
   String statusLine;
