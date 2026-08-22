@@ -78,18 +78,24 @@ bool EpaperDisplay::waitUntilReady(uint32_t timeoutMs) {
   return true;
 }
 
-bool EpaperDisplay::initializeFull() {
-  digitalWrite(BoardPins::EPD_POWER, HIGH); delay(100); reset();
-  if (!waitUntilReady()) return false;
-  command(0x12); if (!waitUntilReady()) return false;
+void EpaperDisplay::configureRam() {
+  // A controller reset also resets its scan direction and RAM window. Apply
+  // this after every reset so full and fast refreshes cannot change rotation.
   command(0x01); data(0xF9); data(0x00); data(0x00);
   command(0x11); data(0x03);
   command(0x44); data(0x00); data(0x0F);
   command(0x45); data(0x00); data(0x00); data(0xF9); data(0x00);
-  command(0x3C); data(0x01);
-  command(0x18); data(0x80);
   command(0x4E); data(0x00);
   command(0x4F); data(0x00); data(0x00);
+}
+
+bool EpaperDisplay::initializeFull() {
+  digitalWrite(BoardPins::EPD_POWER, HIGH); delay(100); reset();
+  if (!waitUntilReady()) return false;
+  command(0x12); if (!waitUntilReady()) return false;
+  configureRam();
+  command(0x3C); data(0x01);
+  command(0x18); data(0x80);
   return waitUntilReady();
 }
 
@@ -102,6 +108,8 @@ bool EpaperDisplay::initializeFast() {
   command(0x22); data(0xB1); command(0x20); if (!waitUntilReady()) return false;
   command(0x1A); data(0x64); data(0x00);
   command(0x22); data(0x91); command(0x20);
+  if (!waitUntilReady()) return false;
+  configureRam();
   return waitUntilReady();
 }
 
@@ -109,7 +117,9 @@ void EpaperDisplay::clear(bool black) { memset(buffer_, black ? 0xFF : 0x00, siz
 
 void EpaperDisplay::pixel(int x, int y, bool black) {
   if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) return;
-  const int rawX = y, rawY = WIDTH - x - 1;
+  // Fixed landscape orientation with the CrowPanel USB-C connector above the
+  // screen. Keep rotation here so every UI and refresh path uses it.
+  const int rawX = HEIGHT - y - 1, rawY = x;
   const size_t address = rawX / 8 + rawY * (RAW_HEIGHT / 8);
   const uint8_t mask = 0x80 >> (rawX % 8);
   if (black) buffer_[address] |= mask; else buffer_[address] &= ~mask;
@@ -186,4 +196,3 @@ bool EpaperDisplay::show(bool fast) {
   command(0x10); data(0x01); delay(20);
   return ready;
 }
-

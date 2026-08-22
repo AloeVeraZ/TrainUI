@@ -28,8 +28,8 @@ class EpaperDisplay {
   void data(uint8_t value);
   void reset();
   bool waitUntilReady(uint32_t timeoutMs = 15000);
+  void configureRam();
   bool initializeFull();
   bool initializeFast();
   const uint8_t *glyph(char character) const;
 };
-
