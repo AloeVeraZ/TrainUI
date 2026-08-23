@@ -187,6 +187,24 @@ void EpaperDisplay::text(int x, int y, const String &value, uint8_t scale, bool 
 
 int EpaperDisplay::textWidth(const String &value, uint8_t scale) const { return value.length()*6*scale; }
 
+int EpaperDisplay::centeredTextX(int centerX, const String &value, uint8_t scale) const {
+  uint32_t litPixels=0;
+  uint32_t twiceCenterSum=0;
+  for (size_t index=0; index<value.length(); ++index) {
+    const uint8_t *columns=glyph(value[index]);
+    for (uint8_t column=0; column<5; ++column) {
+      for (uint8_t row=0; row<7; ++row) {
+        if (!(columns[column] & (1 << row))) continue;
+        const uint32_t blockLeft=(index*6+column)*scale;
+        twiceCenterSum += 2*blockLeft+scale-1;
+        ++litPixels;
+      }
+    }
+  }
+  if (!litPixels) return centerX-textWidth(value,scale)/2;
+  return (2*centerX*litPixels-twiceCenterSum)/(2*litPixels);
+}
+
 bool EpaperDisplay::show(bool fast) {
   if (!(fast ? initializeFast() : initializeFull())) return false;
   command(0x3C); data(0x01); command(0x24);

@@ -17,6 +17,7 @@ class EpaperDisplay {
   void fillCircle(int centerX, int centerY, int radius, bool black = true);
   void text(int x, int y, const String &value, uint8_t scale = 1, bool black = true);
   int textWidth(const String &value, uint8_t scale = 1) const;
+  int centeredTextX(int centerX, const String &value, uint8_t scale = 1) const;
   bool show(bool fast = false);
 
  private:

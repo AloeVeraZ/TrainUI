@@ -124,8 +124,7 @@ void loadSettings() {
 void drawBadge(int centerX, int centerY, const String &badge) {
   display.fillCircle(centerX,centerY,10,true);
   const uint8_t scale=badge.length()==1 ? 2 : 1;
-  const int inkWidth=badge.isEmpty() ? 0 : (badge.length()*6-1)*scale;
-  const int x=centerX-inkWidth/2;
+  const int x=display.centeredTextX(centerX,badge,scale);
   display.text(x,centerY-(7*scale)/2,badge,scale,false);
 }
 
