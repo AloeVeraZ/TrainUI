@@ -124,7 +124,8 @@ void loadSettings() {
 void drawBadge(int centerX, int centerY, const String &badge) {
   display.fillCircle(centerX,centerY,10,true);
   const uint8_t scale=badge.length()==1 ? 2 : 1;
-  const int x=centerX-display.textWidth(badge,scale)/2;
+  const int inkWidth=badge.isEmpty() ? 0 : (badge.length()*6-1)*scale;
+  const int x=centerX-inkWidth/2;
   display.text(x,centerY-(7*scale)/2,badge,scale,false);
 }
 
@@ -177,7 +178,8 @@ void renderDashboard() {
   display.rect(4,86,242,35);
   const String statusTitle = serviceAlert.isEmpty() ? "GOOD SERVICE" : "SERVICE ALERT";
   display.text(9,90,statusTitle,1);
-  String weatherLine=weather.valid ? "TEMP "+String(weather.temperature)+"F" : "TEMP --";
+  String weatherLine=weather.valid ? "TEMP "+String(weather.temperature)+"F" :
+                     (weatherError.isEmpty() ? "TEMP --" : "TEMP ERR");
   weatherLine=cleanDisplay(weatherLine,19);
   display.text(241-display.textWidth(weatherLine,1),90,weatherLine,1);
   String statusLine;
@@ -298,7 +300,9 @@ void updateLive(bool forceAll=false) {
     if (fresh.valid) mtaError="";
     lastArrivalFetch=now;
   }
-  if (forceAll || now-lastWeatherFetch>=WEATHER_REFRESH_MS) {
+  const uint32_t weatherInterval=(weather.valid && weatherError.isEmpty()) ?
+                                 WEATHER_REFRESH_MS : ARRIVAL_REFRESH_MS;
+  if (forceAll || now-lastWeatherFetch>=weatherInterval) {
     MiniWeatherSnapshot fresh;
     if (weatherClient.fetch(fresh,weatherError)) weather=fresh;
     lastWeatherFetch=now;
