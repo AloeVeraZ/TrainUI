@@ -12,7 +12,7 @@
 This folder is reserved for the 3D-printed enclosure models, printable exports, hardware notes, and assembly guidance for the TrainUI project.
 
 <strong>Quick navigation:</strong><br>
-[Hardware Overview](#hardware-overview) | [Enclosure Architecture](#enclosure-architecture) | [Development Status](#development-status) | [Back to TrainUI](../)
+[Hardware Overview](#hardware-overview) | [Enclosure Design](#enclosure-design) | [Development Status](#development-status) | [Back to TrainUI](../)
 
 </div>
 
@@ -20,7 +20,7 @@ This folder is reserved for the 3D-printed enclosure models, printable exports, 
 
 ## Hardware Overview
 
-The TrainUI enclosure is being engineered around compact, inexpensive hardware to create an integrated, glanceable departure sign.
+The enclosure is being made around the exact Pi Zero W and 10.1-inch display used by the main TrainUI build.
 
 | Component | Specification | Details |
 | --- | --- | --- |
@@ -29,7 +29,7 @@ The TrainUI enclosure is being engineered around compact, inexpensive hardware t
 | Assembly method | Heat-set inserts and fasteners | Threaded brass inserts and machine screws through matched assembly holes |
 | Manufacturing | 3D-printed FDM parts | Three-piece modular enclosure design |
 
-## Enclosure Architecture
+## Enclosure Design
 
 The physical case is designed as three interlocking 3D-printed components:
 

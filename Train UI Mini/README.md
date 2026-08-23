@@ -1,10 +1,26 @@
+<div align="center">
+
 # Train UI Mini
 
-Train UI Mini is a small, always-on NYC train display made for the **Elecrow CrowPanel ESP32-S3 2.13-inch e-paper screen**. It shows the next three arrivals in both directions, service status, Coney Island temperature, time, and whether the board is online or offline.
+### NYC arrivals on one small e-paper screen
+
+[![Hardware](https://img.shields.io/badge/Hardware-ESP32--S3-111111?style=flat-square&logo=espressif&logoColor=white)](https://www.amazon.com/dp/B0H25DMJ8M)
+[![Display](https://img.shields.io/badge/Display-2.13%22_E--Paper-6b7280?style=flat-square)](#what-you-need)
+[![Data](https://img.shields.io/badge/Data-MTA_Realtime-2563eb?style=flat-square)](https://www.mta.info/developers)
+[![Setup](https://img.shields.io/badge/Setup-Arduino_IDE-f59e0b?style=flat-square&logo=arduino&logoColor=white)](#uploading-the-code)
+
+Three arrivals each way · service status · Coney Island temperature
+
+<strong>Quick navigation:</strong><br>
+[Trains & Stations](#trains-and-stations) | [Hardware](#what-you-need) | [Upload](#uploading-the-code) | [First Setup](#first-setup) | [Controls](#controls)
+
+</div>
 
 > **Project image placeholder:** Add the finished display photo here as `train-ui-mini.jpg`, then replace this note with `![Train UI Mini running](train-ui-mini.jpg)`.
 
-It is the cheaper and simpler version of [Train UI](../Train%20UI/). The regular version uses a Raspberry Pi, a larger HDMI screen, and an installer script. Train UI Mini only needs the CrowPanel, a USB-C cable, and the included Arduino code.
+Train UI Mini is the cheaper, simpler version of [Train UI](../Train%20UI/). It shows live NYC arrivals, service status, Coney Island temperature, time, and connection state on one screen.
+
+The regular build uses a Raspberry Pi and a larger HDMI display. The Mini only needs the CrowPanel, a USB-C cable, and the Arduino code in this folder.
 
 ## Trains and stations
 

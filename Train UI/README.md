@@ -6,9 +6,9 @@
 
 Live arrivals · Service alerts · NYC weather · System health
 
-[![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-OS-C51A4A?style=for-the-badge&logo=raspberrypi&logoColor=white&labelColor=8E1334)](https://www.raspberrypi.com/software/)
-[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=for-the-badge&logo=python&logoColor=white&labelColor=255986)](https://www.python.org/)
-[![MTA](https://img.shields.io/badge/Data-MTA%20GTFS--Realtime-0039A6?style=for-the-badge&logoColor=white&labelColor=002D72)](https://www.mta.info/developers)
+[![Raspberry Pi](https://img.shields.io/badge/Hardware-Pi_Zero_W-c51a4a?style=flat-square&logo=raspberrypi&logoColor=white)](https://www.raspberrypi.com/software/)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![MTA](https://img.shields.io/badge/Data-MTA_Realtime-2563eb?style=flat-square)](https://www.mta.info/developers)
 
 <strong>Quick navigation:</strong><br>
 [Features](#what-trainui-supports) · [Hardware](#main-project-hardware) · [Install](#one-command-installation) · [Troubleshooting](#troubleshooting)
@@ -17,7 +17,7 @@ Live arrivals · Service alerts · NYC weather · System health
 
 ---
 
-TrainUI turns a Raspberry Pi and HDMI display into a dedicated, glanceable departure board for New York City subway and Staten Island Railway service. During installation, the owner chooses a train and then chooses a station served by that train. There is no preselected station or line.
+TrainUI turns a Raspberry Pi and HDMI screen into an always-on NYC departure board. During setup, you choose a train and then any station served by it. Nothing is preselected.
 
 Once installed, TrainUI boots directly into a fullscreen kiosk, rotates the display 270°, and continually updates arrivals, service alerts, weather, time, and Raspberry Pi health information. The public MTA feeds used by the project do not require an API key.
 
@@ -45,14 +45,14 @@ Long station names and direction labels automatically shrink to fit. The departu
 
 ## Main project hardware
 
-The primary TrainUI build intentionally uses inexpensive, simple hardware.
+The main build uses simple, inexpensive hardware.
 
 | Component | Main project choice | Why it was selected |
 |---|---|---|
 | Computer | Original Raspberry Pi Zero W—not the newer Zero 2 W | It is small, inexpensive, Wi-Fi capable, and powerful enough for this focused display. |
 | Operating system | Current, non-legacy Raspberry Pi OS (32-bit) with Desktop | This is the officially tested software target for the original Pi Zero W. |
 | Display | [HAMTYSAN 10.1-inch HDMI monitor, Amazon ASIN B0FMF3RTPC](https://www.amazon.com/dp/B0FMF3RTPC) | It was inexpensive, driver-free, non-touch, and straightforward to integrate. |
-| Enclosure | Custom three-part 3D-printed case | It keeps the project compact and allows the display and Pi to be assembled into one purpose-built unit. |
+| Enclosure | Custom three-part 3D-printed case | Holds the display, Pi, and cables together in one unit. |
 
 ### Display used by the main build
 
@@ -62,9 +62,9 @@ Other HDMI displays may work, but the main enclosure and future CAD files are be
 
 ### Raspberry Pi used by the main build
 
-The reference unit uses the original Raspberry Pi Zero W. The older Zero W was chosen primarily because it is cheap and compact. TrainUI deliberately keeps the interface lightweight so it can run continuously on that hardware.
+The reference build uses the original Raspberry Pi Zero W because it is cheap, small, and still fast enough for this display. The interface stays lightweight so it can run continuously on that board.
 
-This repository may also work on newer Raspberry Pis, but the original Zero W with current Raspberry Pi OS (32-bit) is the main supported build—not the Zero 2 W and not a 64-bit-only setup.
+Newer Raspberry Pis may work too, but the supported build is the original Zero W with current Raspberry Pi OS (32-bit), not the Zero 2 W or a 64-bit-only setup.
 
 ## Enclosure and CAD
 
@@ -105,7 +105,7 @@ ssh YOUR_USERNAME@192.168.1.123
 Run the installer as the normal Raspberry Pi user:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/installer/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/Train%20UI/installer/install.sh | bash
 ```
 
 Do not place `sudo` before this command. The installer requests elevated access only for the system changes that require it.
@@ -119,7 +119,7 @@ After setup, the Pi reboots and launches TrainUI automatically.
 SSH into the Pi and rerun the same installer command whenever the display needs to use another route or station:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/installer/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/Train%20UI/installer/install.sh | bash
 ```
 
 The installer shows the current selection and asks whether to keep it. Answer `n` to return to the train and station menus. The new selection is saved and used after the installer finishes and reboots.

@@ -2,102 +2,80 @@
 
 # Train UI
 
-### Two ways to build an always-on NYC train board
+### One NYC departure board · two different builds
 
-Live arrivals · Service alerts · Weather · A screen made to be glanced at
+[![Projects](https://img.shields.io/badge/Builds-Full_%2B_Mini-2563eb?style=flat-square)](#choose-a-build)
+[![Data](https://img.shields.io/badge/Data-MTA_Realtime-111111?style=flat-square)](https://www.mta.info/developers)
+[![Coverage](https://img.shields.io/badge/Coverage-Subway_%2B_SIR-6b7280?style=flat-square)](#shared-features)
+[![Author](https://img.shields.io/badge/Built_by-aloe-f59e0b?style=flat-square)](https://github.com/AloeVeraZ)
 
-[Full Train UI](Train%20UI/) · [Train UI Mini](Train%20UI%20Mini/)
+Live arrivals · service alerts · weather · one quick look before leaving
+
+<strong>Quick navigation:</strong><br>
+[Choose a Build](#choose-a-build) | [Compare Hardware](#hardware-comparison) | [Shared Features](#shared-features) | [Full Setup](Train%20UI/) | [Mini Setup](Train%20UI%20Mini/)
 
 </div>
 
 ---
 
-Train UI started with a simple idea: the useful part of checking a transit app should already be sitting on the desk. No unlocking a phone, opening an app, choosing a station, or getting distracted along the way. You look over and see when the next trains are coming.
+Train UI puts the useful part of a transit app on a screen that is already sitting there. Pick a train and station once, then look over whenever you need the next arrivals.
 
-This repository contains two versions of that idea. **Train UI** is the original Raspberry Pi build with a large color display and a more detailed interface. **Train UI Mini** puts the same basic information on a small e-paper screen that already has an ESP32 built into it.
+There are two builds in this repo. The original **Train UI** is a larger Raspberry Pi dashboard. **Train UI Mini** puts the same idea on a small ESP32 e-paper display. The full version shows more; the Mini is cheaper and much easier to start.
 
-They are not meant to replace each other. The full version is the better display; the Mini is the easier project to actually build.
+## Choose a build
 
-## The two versions
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>Train UI</h3>
+      <p><strong>10.1-inch color display · Raspberry Pi Zero W</strong></p>
+      <p>The original build. It has room for arrivals, service information, weather, time, and Raspberry Pi health on one full dashboard.</p>
+      <p><strong>Best for:</strong> a larger permanent display that can be read from across a room.</p>
+      <p><strong><a href="Train%20UI/">Hardware, installer, and setup →</a></strong></p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>Train UI Mini</h3>
+      <p><strong>2.13-inch e-paper · ESP32-S3</strong></p>
+      <p>A one-page desk version. The controller, Wi-Fi, buttons, and screen are already built into the CrowPanel.</p>
+      <p><strong>Best for:</strong> a lower-cost first build with no Raspberry Pi or Linux setup.</p>
+      <p><strong><a href="Train%20UI%20Mini/">Arduino upload and setup →</a></strong></p>
+    </td>
+  </tr>
+</table>
+
+## Hardware comparison
 
 | | Train UI | Train UI Mini |
 |---|---|---|
 | Display | 10.1-inch 1024×600 color HDMI LCD | 2.13-inch 122×250 black-and-white e-paper |
 | Computer | Raspberry Pi Zero W | ESP32-S3 built into the display |
 | Software | Raspberry Pi OS and Python | Arduino firmware |
-| Interface | Full dashboard with larger panels and system information | One compact page with the important information |
-| Installation | Raspberry Pi Imager, SSH, then the installer script | Open the sketch in Arduino IDE and upload it |
-| Physical build | Pi, display, cables, storage, power, and a three-part printed enclosure | One CrowPanel board, a USB cable, and a printed case |
-| Best for | A larger permanent departure board | A small desk display and a first hardware project |
+| Install | Flash Raspberry Pi OS, connect through SSH, run the installer | Open the sketch in Arduino IDE and upload |
+| Build | Pi, screen, storage, cables, power, and printed enclosure | CrowPanel, USB-C cable, and optional printed case |
+| Main tradeoff | More hardware and setup | Smaller screen and slower refresh |
 
-Both versions let you choose the train and station you care about. Both use public MTA realtime data, show arrivals in both directions, and are designed to stay on instead of behaving like another app.
+The full build is easier to read and has more room to grow. The Mini removes most of the hardware and setup: order the screen, print a case if you want one, and upload the Arduino code.
 
-## Train UI
+## Shared features
 
-[Train UI](Train%20UI/) is the original build. It runs on an original Raspberry Pi Zero W connected to a 10.1-inch HDMI display. The extra screen space is used for a full departure-board layout: arrivals in both directions, service information, weather, date and time, and Raspberry Pi health details.
+Both versions:
 
-It is the version to build when the display itself is the main object. It is larger, easier to read from across a room, has color route badges, and can show more information without squeezing anything together.
-
-The tradeoff is setup. A Raspberry Pi is a small Linux computer, so the build involves flashing Raspberry Pi OS, configuring Wi-Fi and SSH, connecting the Pi to the display, and running the included installer script. The installer handles the Python environment, train and station selection, automatic startup, screen rotation, and the settings needed to keep the display awake.
-
-### Why choose the full version?
-
-- The 10.1-inch color screen is much easier to read at a distance.
-- It has room for the complete Train UI layout and system-health information.
-- The Raspberry Pi gives the project more flexibility for future additions.
-- The HDMI display and Pi can be serviced or upgraded separately.
-
-### What makes it harder?
-
-- It requires more individual hardware and cables.
-- You need to set up Raspberry Pi OS and connect through SSH.
-- The enclosure is larger and has more parts to fit together.
-- A normal LCD uses more power than a small e-paper panel.
-
-The complete hardware list, Raspberry Pi preparation, installer instructions, CAD status, and troubleshooting notes are in the [Train UI README](Train%20UI/README.md).
-
-## Train UI Mini
-
-[Train UI Mini](Train%20UI%20Mini/) exists to lower the barrier to entry. It uses the [Elecrow CrowPanel ESP32-S3 2.13-inch e-paper display](https://www.amazon.com/dp/B0H25DMJ8M), which already combines the screen, ESP32, Wi-Fi, buttons, and controls on one board.
-
-That changes the whole build. There is no separate Raspberry Pi, microSD card, HDMI screen, operating system, or Linux setup to learn. You can order the display, 3D print the case, connect it over USB, and upload the included Arduino sketch. On first boot, the board creates its own setup page where you enter Wi-Fi and choose a train and station.
-
-The Mini keeps the display to one page. It shows the selected station, three arrivals for each direction, service status, weather, time, and a clear online or offline indicator. E-paper updates slowly by nature, but that works well here: subway information changes in minutes, not sixty times per second, and the screen is meant to sit quietly on a desk.
-
-### Why choose the Mini?
-
-- The controller and display arrive as one board.
-- Arduino IDE is the only software needed to upload it.
-- It costs less to get started and requires fewer parts.
-- The enclosure is smaller and simpler to print.
-- It is a much friendlier first step into electronics than a full Raspberry Pi setup.
-- E-paper uses very little power between refreshes and remains readable in bright light.
-
-### What do you give up?
-
-- The screen is much smaller and only black and white.
-- E-paper cannot update as smoothly or frequently as an LCD.
-- The one-page layout has less room for detail.
-- The ESP32 has less memory and processing headroom than a Raspberry Pi.
-- It is meant to be a focused departure board, not a general-purpose computer.
-
-The exact Arduino board settings, first-boot Wi-Fi steps, offline test mode, controls, and source layout are in the [Train UI Mini README](Train%20UI%20Mini/README.md).
-
-## Which one should I build?
-
-Build **Train UI** if you want the full-size version and do not mind spending some time setting up a Raspberry Pi. It is the better choice for a wall, shelf, or anywhere the display needs to be readable from farther away.
-
-Build **Train UI Mini** if you want the simplest path from buying parts to having a working train display on your desk. It was made specifically for people who like the idea of Train UI but do not want the price, hardware, or Linux learning curve of the full build.
+- Let you choose a train and then any station served by it.
+- Show the next arrivals in both directions.
+- Use public MTA realtime feeds with no API key.
+- Include service status, local weather or temperature, and connection state.
+- Save the selected train and station for the next boot.
+- Work as passive displays instead of another phone app.
 
 ## Repository layout
 
 ```text
 TrainUI/
-├── Train UI/        # Original Raspberry Pi version, installer, tests, and CAD
+├── Train UI/        # Raspberry Pi version, installer, tests, and CAD
 └── Train UI Mini/   # ESP32-S3 e-paper version and Arduino firmware
 ```
 
-Each folder is self-contained and has its own README. Start with the folder for the hardware you want to build.
+Each build has its own README. Open the folder for the hardware you want to use.
 
 ---
 
