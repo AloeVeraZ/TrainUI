@@ -21,6 +21,10 @@ Train UI Mini is the cheaper, simpler version of [Train UI](../Train%20UI/). It 
 
 The regular build uses a Raspberry Pi and a larger HDMI display. The Mini only needs the CrowPanel, a USB-C cable, and the Arduino code in this folder.
 
+<p align="center">
+  <img src="assets/train-ui-mini-desk.png" alt="Train UI Mini showing live D train arrivals on an e-paper display" width="720" style="max-width: 100%; height: auto;">
+</p>
+
 ## Trains and stations
 
 During setup, you choose a train and then choose any station served by it. The station list automatically changes to match the selected train, so you do not need to find or enter MTA stop IDs yourself.
