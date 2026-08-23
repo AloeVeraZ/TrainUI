@@ -17,8 +17,6 @@ Three arrivals each way · service status · Coney Island temperature
 
 </div>
 
-> **Project image placeholder:** Add the finished display photo here as `train-ui-mini.jpg`, then replace this note with `![Train UI Mini running](train-ui-mini.jpg)`.
-
 Train UI Mini is the cheaper, simpler version of [Train UI](../Train%20UI/). It shows live NYC arrivals, service status, Coney Island temperature, time, and connection state on one screen.
 
 The regular build uses a Raspberry Pi and a larger HDMI display. The Mini only needs the CrowPanel, a USB-C cable, and the Arduino code in this folder.

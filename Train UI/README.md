@@ -264,8 +264,7 @@ python3 installer/build_subway_catalog.py
 
 ```text
 TrainUI/
-├── CAD/
-│   └── README.md                  # Placeholder for the three-part enclosure CAD
+├── CAD/                           # Reserved for the three-part enclosure CAD
 ├── installer/
 │   ├── systemd/
 │   │   ├── trainui-connectivity.service
