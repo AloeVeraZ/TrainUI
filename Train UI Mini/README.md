@@ -8,6 +8,7 @@
 [![Display](https://img.shields.io/badge/Display-2.13%22_E--Paper-6b7280?style=flat-square)](#what-you-need)
 [![Data](https://img.shields.io/badge/Data-MTA_Realtime-2563eb?style=flat-square)](https://www.mta.info/developers)
 [![Setup](https://img.shields.io/badge/Setup-Arduino_IDE-f59e0b?style=flat-square&logo=arduino&logoColor=white)](#uploading-the-code)
+[![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](LICENSE)
 
 Three arrivals each way · service status · Coney Island temperature
 
@@ -81,4 +82,6 @@ Train arrivals and alerts come directly from the MTA's public realtime feeds. Te
 
 All firmware is inside `TrainUIMiniCode/`. Open `TrainUIMiniCode.ino` in Arduino IDE, or open the entire code folder if you use PlatformIO.
 
-Designed and built by **aloe**.
+## License
+
+Train UI Mini is available under the [MIT License](LICENSE).

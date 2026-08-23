@@ -7,7 +7,6 @@
 [![Projects](https://img.shields.io/badge/Builds-Full_%2B_Mini-2563eb?style=flat-square)](#choose-a-build)
 [![Data](https://img.shields.io/badge/Data-MTA_Realtime-111111?style=flat-square)](https://www.mta.info/developers)
 [![Coverage](https://img.shields.io/badge/Coverage-Subway_%2B_SIR-6b7280?style=flat-square)](#shared-features)
-[![Author](https://img.shields.io/badge/Built_by-aloe-f59e0b?style=flat-square)](https://github.com/AloeVeraZ)
 
 Live arrivals · service alerts · weather · one quick look before leaving
 
@@ -76,11 +75,3 @@ TrainUI/
 ```
 
 Each build has its own README. Open the folder for the hardware you want to use.
-
----
-
-<div align="center">
-
-Designed and built by **aloe**.
-
-</div>
