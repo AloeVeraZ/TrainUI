@@ -21,6 +21,10 @@ install -m 0644 files/app/installer/systemd/trainui-connectivity.service \
 install -m 0644 files/app/installer/systemd/trainui-connectivity.timer \
     "${ROOTFS_DIR}/etc/systemd/system/trainui-connectivity.timer"
 
+install -d -m 0755 "${ROOTFS_DIR}/etc/systemd/system.conf.d"
+install -m 0644 files/app/installer/systemd/90-trainui-runtime-watchdog.conf \
+    "${ROOTFS_DIR}/etc/systemd/system.conf.d/90-trainui-runtime-watchdog.conf"
+
 install -d -m 0755 "${ROOTFS_DIR}/etc/NetworkManager/conf.d"
 install -m 0644 files/90-trainui-wifi.conf \
     "${ROOTFS_DIR}/etc/NetworkManager/conf.d/90-trainui-wifi.conf"
@@ -42,3 +46,12 @@ if [ -f "$CMDLINE_FILE" ] && ! grep -q 'consoleblank=0' "$CMDLINE_FILE"; then
     sed -i 's/$/ consoleblank=0/' "$CMDLINE_FILE"
 fi
 
+BOOT_CONFIG_FILE="${ROOTFS_DIR}/boot/firmware/config.txt"
+if [ ! -f "$BOOT_CONFIG_FILE" ]; then
+    BOOT_CONFIG_FILE="${ROOTFS_DIR}/boot/config.txt"
+fi
+if [ -f "$BOOT_CONFIG_FILE" ] && \
+   ! grep -qE '^[[:space:]]*dtparam=watchdog=on([[:space:]]*(#.*)?)?$' "$BOOT_CONFIG_FILE"; then
+    printf '\n# TrainUI automatic recovery from a full system hang\ndtparam=watchdog=on\n' \
+        >>"$BOOT_CONFIG_FILE"
+fi

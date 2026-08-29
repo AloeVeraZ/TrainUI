@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 import tkinter as tk
 import tkinter.font as tkfont
 from datetime import datetime
@@ -98,6 +99,7 @@ STATUS_REFRESH_MS = 5 * 60_000
 SYSTEM_REFRESH_MS = 5_000
 TICKER_FRAME_MS = 16
 NETWORK_IDENTITY_REFRESH_SECONDS = 60
+HEARTBEAT_INTERVAL_SECONDS = 5
 # The reference LED display moves at about 200 px/s at 1280x720. The requested
 # 1.5x pace is therefore approximately 300 px/s.
 TICKER_SPEED_PX_PER_SECOND = 300.0
@@ -354,6 +356,8 @@ class Dashboard(tk.Tk):
         self._system_values = {}
         self._weather_values = None
         self.http_sessions = {}
+        self.heartbeat_path = os.environ.get("TRAINUI_HEARTBEAT_FILE")
+        self._last_heartbeat = 0.0
 
         # Departure minute tracking for tier flashing
         self.north_minutes = []
@@ -418,6 +422,30 @@ class Dashboard(tk.Tk):
         for session in self.http_sessions.values():
             session.close()
         self.destroy()
+
+    def report_callback_exception(self, exc_type, exc_value, exc_traceback):
+        """Exit after an unexpected Tk callback error so the launcher can recover."""
+        traceback.print_exception(exc_type, exc_value, exc_traceback)
+        try:
+            self.destroy()
+        except tk.TclError:
+            pass
+
+    def _mark_alive(self):
+        """Refresh the launcher's heartbeat only while the visible clock is alive."""
+        if not self.heartbeat_path:
+            return
+
+        now = time.monotonic()
+        if now - self._last_heartbeat < HEARTBEAT_INTERVAL_SECONDS:
+            return
+
+        try:
+            Path(self.heartbeat_path).touch()
+        except OSError:
+            # The launcher will restart us if its runtime directory disappears.
+            return
+        self._last_heartbeat = now
 
     def fitted_font_size(self, text, max_pixels, max_size, min_size=9, weight="bold"):
         """Return the largest font size that fits without changing its container."""
@@ -817,6 +845,7 @@ class Dashboard(tk.Tk):
             self.clock_hours.config(text=clock_values[0])
             self.clock_mins.config(text=clock_values[1])
             self.date.config(text=clock_values[2])
+        self._mark_alive()
         self.after(1000, self._tick_clock)
 
     def _get_total_net_bytes(self):

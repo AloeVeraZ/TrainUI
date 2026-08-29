@@ -323,6 +323,14 @@ LOG_FILE="$LOG_FILE"
 CONFIG_FILE="$TRAINUI_CONFIG_FILE"
 
 export TRAINUI_CONFIG="\$CONFIG_FILE"
+export PYTHONUNBUFFERED=1
+
+# This lives in tmpfs, not on the microSD card. timertest.py refreshes it from
+# the same callback that updates the visible clock.
+HEARTBEAT_FILE="\${XDG_RUNTIME_DIR:-/tmp}/trainui-\${UID}.heartbeat"
+HEARTBEAT_TIMEOUT_SECONDS=45
+MAX_RUNTIME_SECONDS=86400
+export TRAINUI_HEARTBEAT_FILE="\$HEARTBEAT_FILE"
 
 mkdir -p "\$APP_DIR"
 
@@ -423,9 +431,72 @@ wait_for_mta
 
 keep_display_awake &
 display_watchdog_pid=\$!
-trap 'kill "\$display_watchdog_pid" 2>/dev/null || true' EXIT INT TERM
+app_pid=""
 
-"\$PYTHON" "\$MAIN_FILE" >> "\$LOG_FILE" 2>&1
+stop_app() {
+    [ -n "\$app_pid" ] || return 0
+    kill "\$app_pid" 2>/dev/null || return 0
+
+    for _ in \$(seq 1 5); do
+        kill -0 "\$app_pid" 2>/dev/null || return 0
+        sleep 1
+    done
+
+    kill -KILL "\$app_pid" 2>/dev/null || true
+}
+
+cleanup() {
+    stop_app
+    kill "\$display_watchdog_pid" 2>/dev/null || true
+    rm -f "\$HEARTBEAT_FILE"
+}
+trap cleanup EXIT
+trap 'exit 0' INT TERM
+
+# Keep the desktop session and display environment alive while supervising the
+# Python process. A stopped clock, crash, or once-daily maintenance recycle all
+# recover here without rebooting or waiting for another login.
+while true; do
+    rm -f "\$HEARTBEAT_FILE"
+    app_started_at="\$(date +%s)"
+    restart_reason="TrainUI exited"
+
+    "\$PYTHON" "\$MAIN_FILE" >> "\$LOG_FILE" 2>&1 &
+    app_pid=\$!
+    echo "TrainUI process \$app_pid started." >> "\$LOG_FILE"
+
+    while kill -0 "\$app_pid" 2>/dev/null; do
+        sleep 10
+        now="\$(date +%s)"
+        heartbeat_at="\$app_started_at"
+        if [ -e "\$HEARTBEAT_FILE" ]; then
+            heartbeat_at="\$(stat -c %Y "\$HEARTBEAT_FILE" 2>/dev/null || echo "\$app_started_at")"
+        fi
+
+        if [ "\$((now - heartbeat_at))" -gt "\$HEARTBEAT_TIMEOUT_SECONDS" ]; then
+            restart_reason="Clock heartbeat was stale for more than \${HEARTBEAT_TIMEOUT_SECONDS}s"
+            stop_app
+            break
+        fi
+
+        if [ "\$((now - app_started_at))" -ge "\$MAX_RUNTIME_SECONDS" ]; then
+            restart_reason="Daily preventive restart"
+            stop_app
+            break
+        fi
+    done
+
+    if wait "\$app_pid"; then
+        exit_code=0
+    else
+        exit_code=\$?
+    fi
+    printf '%s (exit %s); restarting in 3 seconds.\n' \
+        "\$restart_reason" "\$exit_code" >> "\$LOG_FILE"
+    app_pid=""
+    rm -f "\$HEARTBEAT_FILE"
+    sleep 3
+done
 EOF
 
 chmod +x "$RUNNER"
@@ -488,6 +559,26 @@ sudo systemctl mask \
     hybrid-sleep.target \
     2>/dev/null || true
 
+# Let the Raspberry Pi hardware watchdog recover from a full operating-system
+# hang. The application heartbeat above handles the more common GUI-only hang.
+if [ ! -f "$APP_DIR/installer/systemd/90-trainui-runtime-watchdog.conf" ]; then
+    fail "The runtime watchdog configuration was not found in the GitHub repository."
+fi
+sudo install -d -m 0755 /etc/systemd/system.conf.d
+sudo install -m 0644 \
+    "$APP_DIR/installer/systemd/90-trainui-runtime-watchdog.conf" \
+    /etc/systemd/system.conf.d/90-trainui-runtime-watchdog.conf
+
+BOOT_CONFIG_FILE="/boot/firmware/config.txt"
+if [ ! -f "$BOOT_CONFIG_FILE" ]; then
+    BOOT_CONFIG_FILE="/boot/config.txt"
+fi
+if [ -f "$BOOT_CONFIG_FILE" ] && \
+   ! grep -qE '^[[:space:]]*dtparam=watchdog=on([[:space:]]*(#.*)?)?$' "$BOOT_CONFIG_FILE"; then
+    printf '\n# TrainUI automatic recovery from a full system hang\ndtparam=watchdog=on\n' | \
+        sudo tee -a "$BOOT_CONFIG_FILE" >/dev/null
+fi
+
 CMDLINE_FILE="/boot/firmware/cmdline.txt"
 if [ ! -f "$CMDLINE_FILE" ]; then
     CMDLINE_FILE="/boot/cmdline.txt"
@@ -505,6 +596,8 @@ say "Installation complete."
 echo "The Pi will reboot in five seconds."
 echo "TrainUI will start automatically at 270 degrees."
 echo "Network-agnostic Wi-Fi reliability checks run every 30 seconds."
+echo "A frozen TrainUI process restarts automatically within about one minute."
+echo "The application is also recycled once daily and the Pi hardware watchdog is enabled."
 echo "Desktop, console, X11, Wayland, and system sleep blanking are disabled."
 echo "Runtime log: $LOG_FILE"
 

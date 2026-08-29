@@ -3,6 +3,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -70,6 +71,26 @@ class DisplayParityTests(unittest.TestCase):
         self.assertIn('"trains": requests.Session()', source)
         self.assertIn("self.after(2_500, self.refresh_weather)", source)
         self.assertIn("self.after(5_000, self.refresh_status)", source)
+
+    def test_visible_clock_drives_a_tmpfs_heartbeat(self):
+        source = TIMETEST_PATH.read_text(encoding="utf-8")
+        clock_method = source[
+            source.index("    def _tick_clock"):
+            source.index("    def _get_total_net_bytes")
+        ]
+        self.assertEqual(5, runtime.HEARTBEAT_INTERVAL_SECONDS)
+        self.assertIn("self._mark_alive()", clock_method)
+        self.assertIn("def report_callback_exception", source)
+
+        with tempfile.TemporaryDirectory() as directory:
+            heartbeat = Path(directory) / "trainui.heartbeat"
+            dashboard = types.SimpleNamespace(
+                heartbeat_path=str(heartbeat),
+                _last_heartbeat=0.0,
+            )
+            runtime.Dashboard._mark_alive(dashboard)
+            self.assertTrue(heartbeat.is_file())
+            self.assertGreater(dashboard._last_heartbeat, 0.0)
 
     def test_unchanged_status_and_flash_colors_do_not_redraw(self):
         source = TIMETEST_PATH.read_text(encoding="utf-8")

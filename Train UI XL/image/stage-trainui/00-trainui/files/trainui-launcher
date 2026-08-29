@@ -7,6 +7,10 @@ export PYTHONUNBUFFERED=1
 TRAINUI_STATE_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/trainui"
 TRAINUI_LOG_FILE="$TRAINUI_STATE_DIR/trainui.log"
 TRAINUI_LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/trainui-${UID}.lock"
+TRAINUI_HEARTBEAT_FILE="${XDG_RUNTIME_DIR:-/tmp}/trainui-${UID}.heartbeat"
+HEARTBEAT_TIMEOUT_SECONDS=45
+MAX_RUNTIME_SECONDS=86400
+export TRAINUI_HEARTBEAT_FILE
 
 mkdir -p "$TRAINUI_STATE_DIR"
 exec 9>"$TRAINUI_LOCK_FILE"
@@ -70,9 +74,68 @@ rotate_display
 hide_pointer
 keep_display_awake &
 TRAINUI_DISPLAY_WATCHDOG_PID=$!
-trap 'kill "$TRAINUI_DISPLAY_WATCHDOG_PID" 2>/dev/null || true' EXIT INT TERM
+TRAINUI_APP_PID=""
+
+stop_app() {
+    [ -n "$TRAINUI_APP_PID" ] || return 0
+    kill "$TRAINUI_APP_PID" 2>/dev/null || return 0
+
+    for _ in $(seq 1 5); do
+        kill -0 "$TRAINUI_APP_PID" 2>/dev/null || return 0
+        sleep 1
+    done
+
+    kill -KILL "$TRAINUI_APP_PID" 2>/dev/null || true
+}
+
+cleanup() {
+    stop_app
+    kill "$TRAINUI_DISPLAY_WATCHDOG_PID" 2>/dev/null || true
+    rm -f "$TRAINUI_HEARTBEAT_FILE"
+}
+trap cleanup EXIT
+trap 'exit 0' INT TERM
 
 cd /opt/trainui
-/opt/trainui/.venv/bin/python /opt/trainui/timertest.py \
-    >>"$TRAINUI_LOG_FILE" 2>&1
+while true; do
+    rm -f "$TRAINUI_HEARTBEAT_FILE"
+    app_started_at="$(date +%s)"
+    restart_reason="TrainUI exited"
 
+    /opt/trainui/.venv/bin/python /opt/trainui/timertest.py \
+        >>"$TRAINUI_LOG_FILE" 2>&1 &
+    TRAINUI_APP_PID=$!
+    echo "TrainUI process $TRAINUI_APP_PID started." >>"$TRAINUI_LOG_FILE"
+
+    while kill -0 "$TRAINUI_APP_PID" 2>/dev/null; do
+        sleep 10
+        now="$(date +%s)"
+        heartbeat_at="$app_started_at"
+        if [ -e "$TRAINUI_HEARTBEAT_FILE" ]; then
+            heartbeat_at="$(stat -c %Y "$TRAINUI_HEARTBEAT_FILE" 2>/dev/null || echo "$app_started_at")"
+        fi
+
+        if [ "$((now - heartbeat_at))" -gt "$HEARTBEAT_TIMEOUT_SECONDS" ]; then
+            restart_reason="Clock heartbeat was stale for more than ${HEARTBEAT_TIMEOUT_SECONDS}s"
+            stop_app
+            break
+        fi
+
+        if [ "$((now - app_started_at))" -ge "$MAX_RUNTIME_SECONDS" ]; then
+            restart_reason="Daily preventive restart"
+            stop_app
+            break
+        fi
+    done
+
+    if wait "$TRAINUI_APP_PID"; then
+        exit_code=0
+    else
+        exit_code=$?
+    fi
+    printf '%s (exit %s); restarting in 3 seconds.\n' \
+        "$restart_reason" "$exit_code" >>"$TRAINUI_LOG_FILE"
+    TRAINUI_APP_PID=""
+    rm -f "$TRAINUI_HEARTBEAT_FILE"
+    sleep 3
+done

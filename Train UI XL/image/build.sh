@@ -64,6 +64,8 @@ install -m 0644 "$TRAINUI_PROJECT_DIR/installer/systemd/trainui-connectivity.ser
     "$CUSTOM_STAGE_FILES/app/installer/systemd/trainui-connectivity.service"
 install -m 0644 "$TRAINUI_PROJECT_DIR/installer/systemd/trainui-connectivity.timer" \
     "$CUSTOM_STAGE_FILES/app/installer/systemd/trainui-connectivity.timer"
+install -m 0644 "$TRAINUI_PROJECT_DIR/installer/systemd/90-trainui-runtime-watchdog.conf" \
+    "$CUSTOM_STAGE_FILES/app/installer/systemd/90-trainui-runtime-watchdog.conf"
 
 python3 "$TRAINUI_PROJECT_DIR/installer/configure.py" \
     --catalog "$TRAINUI_PROJECT_DIR/installer/subway_catalog.json" \
@@ -95,4 +97,3 @@ fi
 printf '\nTrainUI image artifacts:\n'
 find "$PI_GEN_DIR/deploy" -maxdepth 1 -type f \
     \( -name 'TrainUI*.img' -o -name 'TrainUI*.img.xz' \) -print
-
