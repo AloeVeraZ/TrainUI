@@ -1,6 +1,6 @@
 <div align="center">
 
-# TrainUI
+# TrainUI XL
 
 ### An always-on New York City train departure board built around a Raspberry Pi Zero W
 
@@ -17,7 +17,7 @@ Live arrivals · Service alerts · NYC weather · System health
 
 ---
 
-TrainUI turns a Raspberry Pi and HDMI screen into an always-on NYC departure board. During setup, you choose a train and then any station served by it. Nothing is preselected.
+TrainUI XL turns a Raspberry Pi and HDMI screen into an always-on NYC departure board. During setup, you choose a train and then any station served by it. Nothing is preselected.
 
 Once installed, TrainUI boots directly into a fullscreen kiosk, rotates the display 270°, and continually updates arrivals, service alerts, weather, time, and Raspberry Pi health information. The public MTA feeds used by the project do not require an API key.
 
@@ -143,7 +143,7 @@ The installer:
 3. Prompts for the train and station and saves that selection persistently.
 4. Creates an isolated Python environment and installs the required libraries.
 5. Validates the Python source and imports.
-6. Creates `~/TrainUI/run_trainui.sh` to rotate the display and launch TrainUI.
+6. Creates `~/TrainUI/Train UI XL/run_trainui.sh` to rotate the display and launch TrainUI.
 7. Enables automatic startup for current Wayland/labwc and older X11 Raspberry Pi OS desktops.
 8. Applies network-agnostic Wi-Fi reliability settings without rewriting saved SSIDs or passwords.
 9. Prevents desktop, console, and system sleep or blanking.
@@ -177,14 +177,14 @@ No software can compensate for incorrect credentials, a router outage, weak sign
 View the runtime log:
 
 ```bash
-tail -f ~/TrainUI/trainui.log
+tail -f "$HOME/TrainUI/Train UI XL/trainui.log"
 ```
 
 Restart the interface without rebooting:
 
 ```bash
 pkill -f timertest.py || true
-~/TrainUI/run_trainui.sh &
+"$HOME/TrainUI/Train UI XL/run_trainui.sh" &
 ```
 
 Check the connectivity timer:
@@ -197,7 +197,8 @@ sudo journalctl -u trainui-connectivity.service --since today
 Run the route/station selector directly:
 
 ```bash
-python3 ~/TrainUI/installer/configure.py --config ~/.config/trainui/config.json
+python3 "$HOME/TrainUI/Train UI XL/installer/configure.py" \
+    --config "$HOME/.config/trainui/config.json"
 sudo reboot
 ```
 
@@ -214,7 +215,7 @@ Confirm that SSH was enabled in Raspberry Pi Imager and that the Pi is connected
 Confirm that the Pi reaches the graphical desktop, then inspect:
 
 ```bash
-tail -n 100 ~/TrainUI/trainui.log
+tail -n 100 "$HOME/TrainUI/Train UI XL/trainui.log"
 ```
 
 ### The installer says no interactive terminal is available
@@ -238,7 +239,7 @@ For the original Pi Zero W, verify that the network offers 2.4 GHz Wi-Fi.
 
 ### The screen is rotated incorrectly
 
-The main enclosure expects 270° rotation. The generated launcher contains `wlr-randr --transform 270` for Wayland and `xrandr --rotate left` for X11. A differently mounted display may require changing those values in `~/TrainUI/run_trainui.sh`; rerunning the installer regenerates that file.
+The main enclosure expects 270° rotation. The generated launcher contains `wlr-randr --transform 270` for Wayland and `xrandr --rotate left` for X11. A differently mounted display may require changing those values in `~/TrainUI/Train UI XL/run_trainui.sh`; rerunning the installer regenerates that file.
 
 ### The display still turns itself off
 

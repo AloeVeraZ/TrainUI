@@ -1,6 +1,6 @@
 <div align="center">
 
-# TrainUI Raspberry Pi Installer
+# TrainUI XL Raspberry Pi Installer
 
 ### Interactive deployment, route selection, kiosk startup, and connectivity monitoring
 
@@ -74,15 +74,15 @@ changes, local commits, or damage, the installer preserves it in a timestamped
 `~/TrainUI.backup.*` folder before deploying a fresh copy. The configuration in
 `~/.config/trainui/config.json` remains intact.
 
-The installer creates `~/TrainUI/run_trainui.sh` and writes runtime output to
-`~/TrainUI/trainui.log`.
+The installer creates `~/TrainUI/Train UI XL/run_trainui.sh` and writes runtime
+output to `~/TrainUI/Train UI XL/trainui.log`.
 
 ## Validation and Troubleshooting
 
 View recent runtime output with:
 
 ```bash
-tail -n 100 ~/TrainUI/trainui.log
+tail -n 100 "$HOME/TrainUI/Train UI XL/trainui.log"
 ```
 
 Check the connectivity timer with:
