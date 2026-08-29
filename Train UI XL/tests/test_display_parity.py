@@ -54,6 +54,32 @@ class DisplayParityTests(unittest.TestCase):
         self.assertAlmostEqual(-50.0, runtime.advance_ticker(-900.0, 1000.0, 0.5))
         self.assertEqual(0.0, runtime.advance_ticker(-100.0, 0.0, 1.0))
 
+    def test_service_panel_receives_height_freed_by_system_health(self):
+        source = TIMETEST_PATH.read_text(encoding="utf-8")
+        self.assertIn("root.grid_rowconfigure(2, weight=1)", source)
+        self.assertIn("root.grid_rowconfigure(5, weight=0)", source)
+        self.assertEqual(10, runtime.SYSTEM_PANEL_PADDING_Y)
+        self.assertEqual(10, runtime.SYSTEM_STAT_FONT_SIZE)
+        self.assertEqual(1, runtime.SYSTEM_STAT_GAP)
+        self.assertGreater(runtime.SERVICE_TITLE_GAP, 0)
+        self.assertGreater(runtime.SERVICE_MESSAGE_GAP, runtime.SERVICE_TITLE_GAP)
+
+    def test_periodic_work_is_spread_out_and_cached(self):
+        source = TIMETEST_PATH.read_text(encoding="utf-8")
+        self.assertGreaterEqual(runtime.NETWORK_IDENTITY_REFRESH_SECONDS, 60)
+        self.assertIn('"trains": requests.Session()', source)
+        self.assertIn("self.after(2_500, self.refresh_weather)", source)
+        self.assertIn("self.after(5_000, self.refresh_status)", source)
+
+    def test_unchanged_status_and_flash_colors_do_not_redraw(self):
+        source = TIMETEST_PATH.read_text(encoding="utf-8")
+        self.assertIn("if signature == previous_signature:", source)
+        self.assertIn('if card_dict["_tier_color"] == color:', source)
+        self.assertIn('if card["_times"] == times_key:', source)
+        self.assertIn("if self._system_values.get(key) != value[key]:", source)
+        status_method = source[source.index("    def _set_status"):source.index("    def _drain_events")]
+        self.assertNotIn("update_idletasks", status_method)
+
     def test_large_weather_query_matches_mini_units_and_reference(self):
         self.assertEqual((40.5749, -73.9859), (runtime.LATITUDE, runtime.LONGITUDE))
         self.assertIn("wind_speed_unit=mph", runtime.WEATHER_URL)

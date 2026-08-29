@@ -97,6 +97,7 @@ WEATHER_REFRESH_MS = 10 * 60_000
 STATUS_REFRESH_MS = 5 * 60_000
 SYSTEM_REFRESH_MS = 5_000
 TICKER_FRAME_MS = 16
+NETWORK_IDENTITY_REFRESH_SECONDS = 60
 # The reference LED display moves at about 200 px/s at 1280x720. The requested
 # 1.5x pace is therefore approximately 300 px/s.
 TICKER_SPEED_PX_PER_SECOND = 300.0
@@ -122,6 +123,12 @@ AMBER = "#ffbf4d"
 
 # Uniform Separation Gap
 GAP = 12
+SYSTEM_PANEL_PADDING_Y = 10
+SYSTEM_STAT_FONT_SIZE = 10
+SYSTEM_STAT_GAP = 1
+SERVICE_TITLE_GAP = 8
+SERVICE_MESSAGE_GAP = 12
+TICKER_MIN_HEIGHT = 42
 
 
 def weather_text(code):
@@ -249,14 +256,24 @@ class RoundedCard(tk.Canvas):
     def config(self, cnf=None, **kwargs):
         # ``bg`` controls the rounded card fill, not the square Canvas corners.
         # The outer Canvas color is managed separately to match the backdrop.
+        if cnf is None and not kwargs:
+            return super().config()
+
         options = dict(kwargs)
+        fill_changed = False
         if "bg" in options:
-            self.bg_color = options.pop("bg")
+            new_bg = options.pop("bg")
+            fill_changed = new_bg != self.bg_color
+            self.bg_color = new_bg
         if cnf and isinstance(cnf, dict) and "bg" in cnf:
             cnf = dict(cnf)
-            self.bg_color = cnf.pop("bg")
-        super().config(cnf, **options)
-        self._draw()
+            new_bg = cnf.pop("bg")
+            fill_changed = fill_changed or new_bg != self.bg_color
+            self.bg_color = new_bg
+        if cnf or options:
+            super().config(cnf, **options)
+        if fill_changed:
+            self._draw()
 
     configure = config
 
@@ -333,6 +350,10 @@ class Dashboard(tk.Tk):
         self.ticker_text_width = 800  # Safe default width
         self.ticker_last_frame = None
         self.anim_step = 0
+        self._status_signature = None
+        self._system_values = {}
+        self._weather_values = None
+        self.http_sessions = {}
 
         # Departure minute tracking for tier flashing
         self.north_minutes = []
@@ -341,25 +362,39 @@ class Dashboard(tk.Tk):
         # Network speed baseline tracking
         self.last_rx_bytes, self.last_tx_bytes = self._get_total_net_bytes()
         self.last_net_time = time.time()
+        self.network_identity = ("N/A", "Checking...")
+        self.network_identity_checked_at = 0.0
 
         self._build_ui()
         self.after_idle(self._hide_pointer)
         # Freeze cards that contain changing network text so updates cannot
         # alter the overall screen proportions.
         self.after_idle(self._lock_dynamic_card_sizes)
-        self.bind("<Escape>", lambda _event: self.destroy())
+        self.protocol("WM_DELETE_WINDOW", self._shutdown)
+        self.bind("<Escape>", lambda _event: self._shutdown())
         self.bind("<F11>", lambda _event: self.attributes("-fullscreen", not self.attributes("-fullscreen")))
 
         if start_services:
+            self.http_sessions = {
+                "trains": requests.Session(),
+                "weather": requests.Session(),
+                "status": requests.Session(),
+            }
+            for session in self.http_sessions.values():
+                session.headers.update({"User-Agent": "TrainUI-XL/1.0"})
+
             # Start animation loops and background fetches only in production.
             self._tick_clock()
             self._animate_ticker()
             self._animate_led_breathing()
             self._drain_events()
             self.refresh_trains()
-            self.refresh_weather()
-            self.refresh_status()
-            self.refresh_system_stats()
+            # Spread CPU, TLS, and protobuf work across separate moments. On the
+            # single-core Pi Zero W, starting every job together causes a short
+            # but visible animation stall.
+            self.after(1_000, self.refresh_system_stats)
+            self.after(2_500, self.refresh_weather)
+            self.after(5_000, self.refresh_status)
 
     def label(self, parent, text="", size=14, color=WHITE, weight="normal", **kwargs):
         return tk.Label(parent, text=text, bg=parent.cget("bg"), fg=color,
@@ -378,6 +413,11 @@ class Dashboard(tk.Tk):
                 pending.extend(widget.winfo_children())
             except tk.TclError:
                 continue
+
+    def _shutdown(self):
+        for session in self.http_sessions.values():
+            session.close()
+        self.destroy()
 
     def fitted_font_size(self, text, max_pixels, max_size, min_size=9, weight="bold"):
         """Return the largest font size that fits without changing its container."""
@@ -404,10 +444,10 @@ class Dashboard(tk.Tk):
 
         root.grid_rowconfigure(0, weight=0)  # Top Hero Header
         root.grid_rowconfigure(1, weight=0)  # Departures
-        root.grid_rowconfigure(2, weight=0)  # Service Status
+        root.grid_rowconfigure(2, weight=1)  # Service Status gets spare height
         root.grid_rowconfigure(3, weight=0)  # Weather
         root.grid_rowconfigure(4, weight=0)  # Zero-height spacer
-        root.grid_rowconfigure(5, weight=1)  # Full-width System Health
+        root.grid_rowconfigure(5, weight=0)  # System Health hugs its contents
         root.grid_rowconfigure(6, weight=0)  # Footer
 
         # ---------------- 1. Connected Top Hero Header (Row 0) ----------------
@@ -466,28 +506,37 @@ class Dashboard(tk.Tk):
         self.status_card.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
 
         status_inner = tk.Frame(self.status_card, bg="#08202a")
-        status_inner.pack(fill="both", expand=True, padx=18, pady=12)
+        self.status_inner = status_inner
+        status_inner.pack(fill="both", expand=True, padx=18, pady=16)
 
         self.status_title = self.label(status_inner, "OK  SERVICE STATUS", 15, MUTED, "bold")
-        self.status_title.pack(anchor="w")
+        self.status_title.pack(anchor="w", pady=(0, SERVICE_TITLE_GAP))
 
         self.status_main = self.label(status_inner, "Checking service...", 26, WHITE, "bold")
-        self.status_main.pack(anchor="w", pady=(2, 0))
+        self.status_main.pack(anchor="w", pady=(0, SERVICE_MESSAGE_GAP))
 
-        self.ticker_canvas = tk.Canvas(status_inner, bg="#08202a", highlightthickness=0, height=36)
-        self.ticker_canvas.pack(fill="x", expand=True, pady=(4, 0))
+        self.ticker_canvas = tk.Canvas(
+            status_inner,
+            bg="#08202a",
+            highlightthickness=0,
+            height=TICKER_MIN_HEIGHT,
+        )
+        self.ticker_canvas.pack(fill="both", expand=True)
+        self.ticker_y = TICKER_MIN_HEIGHT / 2
+        self.ticker_font = tkfont.Font(
+            self, family="DejaVu Sans", size=20, weight="bold"
+        )
 
         self.ticker_text_1 = self.ticker_canvas.create_text(
-            0, 18, text=self.ticker_text_str, anchor="w", fill=MUTED, font=("DejaVu Sans", 20, "bold")
+            0, self.ticker_y, text=self.ticker_text_str,
+            anchor="w", fill=MUTED, font=self.ticker_font,
         )
         self.ticker_text_2 = self.ticker_canvas.create_text(
-            0, 18, text=self.ticker_text_str, anchor="w", fill=MUTED, font=("DejaVu Sans", 20, "bold")
+            0, self.ticker_y, text=self.ticker_text_str,
+            anchor="w", fill=MUTED, font=self.ticker_font,
         )
-
-        self.update_idletasks()
-        bbox = self.ticker_canvas.bbox(self.ticker_text_1)
-        if bbox:
-            self.ticker_text_width = bbox[2] - bbox[0]
+        self.ticker_text_width = max(1, self.ticker_font.measure(self.ticker_text_str))
+        self.ticker_canvas.bind("<Configure>", self._resize_ticker)
 
         # ---------------- 4. Weather Section (Row 3) ----------------
         self.weather_card = self.card(root, GLASS_CARD, GLASS_BORDER)
@@ -512,24 +561,28 @@ class Dashboard(tk.Tk):
         spacer.grid(row=4, column=0, columnspan=2, sticky="ew")
 
         # ---------------- 5. Full-width System Health (Row 5) ----------------
-        sys_card = self.card(root, GLASS_CARD)
-        sys_card.grid(
+        self.sys_card = self.card(root, GLASS_CARD)
+        self.sys_card.grid(
             row=5, column=0, columnspan=2,
             sticky="nsew", pady=(0, GAP)
         )
 
-        sys_inner = tk.Frame(sys_card, bg=GLASS_CARD)
-        sys_inner.pack(fill="both", expand=True, padx=22, pady=12)
+        sys_inner = tk.Frame(self.sys_card, bg=GLASS_CARD)
+        self.sys_inner = sys_inner
+        sys_inner.pack(
+            fill="both", expand=True,
+            padx=22, pady=SYSTEM_PANEL_PADDING_Y,
+        )
 
         self.label(
-            sys_inner, "SYSTEM HEALTH", 11, MUTED, "bold"
+            sys_inner, "SYSTEM HEALTH", SYSTEM_STAT_FONT_SIZE, MUTED, "bold"
         ).pack(anchor="w", pady=(0, 6))
 
         stats_wrapper = tk.Frame(sys_inner, bg=GLASS_CARD)
-        stats_wrapper.pack(fill="both", expand=True, anchor="nw")
+        stats_wrapper.pack(fill="x", anchor="nw")
 
         label_options = {
-            "size": 11,
+            "size": SYSTEM_STAT_FONT_SIZE,
             "color": WHITE,
             "weight": "bold",
             "anchor": "w",
@@ -551,28 +604,64 @@ class Dashboard(tk.Tk):
             self.load_label, self.uptime_label, self.ip_label,
             self.net_label, self.down_speed_label, self.up_speed_label,
         ]
-        for stat_label in stat_labels:
-            stat_label.pack(anchor="w", fill="x", pady=2)
+        self.system_stat_labels = stat_labels
+        self.system_label_map = {
+            "cpu_temp": self.cpu_temp_label,
+            "ram": self.ram_label,
+            "disk": self.disk_label,
+            "load": self.load_label,
+            "uptime": self.uptime_label,
+            "ip": self.ip_label,
+            "network": self.net_label,
+            "download": self.down_speed_label,
+            "upload": self.up_speed_label,
+        }
+        for index, stat_label in enumerate(stat_labels):
+            top_pad = 0 if index == 0 else SYSTEM_STAT_GAP
+            bottom_pad = 0 if index == len(stat_labels) - 1 else SYSTEM_STAT_GAP
+            stat_label.pack(
+                anchor="w", fill="x", pady=(top_pad, bottom_pad)
+            )
 
         # ---------------- 6. Footer Line (Row 6) ----------------
         self.footer = self.label(root, self.last_updated, 10, DIM, "bold")
         self.footer.grid(row=6, column=0, columnspan=2, sticky="w", pady=(0, 0))
 
     def _lock_dynamic_card_sizes(self):
-        """Lock Weather and Service Status to their initial rendered heights.
+        """Keep dynamic text from moving the weather and health boundaries.
 
-        Tk normally lets a child label update its requested geometry. These two
-        cards display changing external text, so their requested size could
-        otherwise shift the rows around. Capturing the initial height and then
-        disabling propagation keeps every section perfectly stable.
+        Service Status intentionally receives the spare height. System Health is
+        locked tightly around its labels so its top padding above SYSTEM HEALTH
+        matches its bottom padding below Upload.
         """
         self.update_idletasks()
 
-        for row, card in ((2, self.status_card), (3, self.weather_card)):
-            locked_height = max(1, card.winfo_height())
-            card.configure(height=locked_height)
-            card.pack_propagate(False)
-            self.space_background.grid_rowconfigure(row, minsize=locked_height)
+        weather_height = max(1, self.weather_card.winfo_height())
+        self.weather_card.configure(height=weather_height)
+        self.weather_card.pack_propagate(False)
+        self.space_background.grid_rowconfigure(3, minsize=weather_height)
+
+        system_height = max(
+            1,
+            self.sys_inner.winfo_reqheight()
+            + (SYSTEM_PANEL_PADDING_Y * 2)
+            + 4,
+        )
+        self.sys_card.configure(height=system_height)
+        self.sys_card.pack_propagate(False)
+        self.space_background.grid_rowconfigure(5, minsize=system_height)
+
+    def _resize_ticker(self, event):
+        """Keep marquee text centered as Service Status receives spare height."""
+        self.ticker_y = max(1.0, event.height / 2.0)
+        self.ticker_canvas.coords(
+            self.ticker_text_1, self.ticker_x, self.ticker_y
+        )
+        self.ticker_canvas.coords(
+            self.ticker_text_2,
+            self.ticker_x + self.ticker_text_width,
+            self.ticker_y,
+        )
 
     def _departure_card(self, parent, column, destination, row=0):
         left_pad = 0 if column == 0 else GAP // 2
@@ -616,28 +705,37 @@ class Dashboard(tk.Tk):
         third.grid(row=2, column=0, sticky="w")
         self.label(timetable, "MIN", 11, MUTED, "bold").grid(row=2, column=1, sticky="w", padx=(12, 0), pady=(2, 0))
 
-        return {"next": next_time, "next_unit": next_unit, "second": second, "third": third}
+        return {
+            "next": next_time,
+            "next_unit": next_unit,
+            "second": second,
+            "third": third,
+            "_tier_color": None,
+            "_times": None,
+        }
 
     # ---- Animations & Synchronized Transitions ----------------------------
 
     def _apply_tier_flashing(self, card_dict, minutes_list, flash_red, flash_blue):
         """Applies synchronized fast flashing colors to arrival text and MIN label."""
         if not minutes_list:
-            card_dict["next"].config(fg=CYAN)
-            card_dict["next_unit"].config(fg=CYAN)
+            color = CYAN
+        else:
+            mins = minutes_list[0]
+            if mins <= 3:
+                color = flash_red
+            elif mins <= 5:
+                color = flash_blue
+            else:
+                color = CYAN
+
+        # Tk label reconfiguration is expensive on the original Pi Zero W.
+        # Most arrivals are steady, so do not redraw them 30 times per second.
+        if card_dict["_tier_color"] == color:
             return
-
-        mins = minutes_list[0]
-
-        if mins <= 3:  # 0 (DUE), 1, 2, or 3 MIN: Fast Snappy Flash (Red <-> Gray)
-            card_dict["next"].config(fg=flash_red)
-            card_dict["next_unit"].config(fg=flash_red)
-        elif mins <= 5:  # 4 or 5 MIN: Fast Snappy Flash (Blue <-> Gray)
-            card_dict["next"].config(fg=flash_blue)
-            card_dict["next_unit"].config(fg=flash_blue)
-        else:  # 6+ MIN: Steady Cyan
-            card_dict["next"].config(fg=CYAN)
-            card_dict["next_unit"].config(fg=CYAN)
+        card_dict["_tier_color"] = color
+        card_dict["next"].config(fg=color)
+        card_dict["next_unit"].config(fg=color)
 
     def _animate_led_breathing(self):
         """Pulse animation for dot rings and sharp, snappy synchronized countdown flashing."""
@@ -696,20 +794,29 @@ class Dashboard(tk.Tk):
             self.ticker_text_width,
             elapsed,
         )
-        self.ticker_canvas.coords(self.ticker_text_1, self.ticker_x, 18)
+        self.ticker_canvas.coords(
+            self.ticker_text_1, self.ticker_x, self.ticker_y
+        )
         self.ticker_canvas.coords(
             self.ticker_text_2,
             self.ticker_x + self.ticker_text_width,
-            18,
+            self.ticker_y,
         )
 
         self.after(TICKER_FRAME_MS, self._animate_ticker)
 
     def _tick_clock(self):
         now = datetime.now()
-        self.clock_hours.config(text=now.strftime("%I").lstrip("0"))
-        self.clock_mins.config(text=now.strftime("%M"))
-        self.date.config(text=now.strftime("%A - %B %-d") if hasattr(now, "strftime") else "")
+        clock_values = (
+            now.strftime("%I").lstrip("0"),
+            now.strftime("%M"),
+            now.strftime("%A - %B %-d"),
+        )
+        if getattr(self, "_clock_values", None) != clock_values:
+            self._clock_values = clock_values
+            self.clock_hours.config(text=clock_values[0])
+            self.clock_mins.config(text=clock_values[1])
+            self.date.config(text=clock_values[2])
         self.after(1000, self._tick_clock)
 
     def _get_total_net_bytes(self):
@@ -811,9 +918,19 @@ class Dashboard(tk.Tk):
         except Exception:
             stats["uptime"] = "Uptime: N/A"
 
-        # 6. Network IP & Connection
-        ip_addr = get_ip_address()
-        ssid = truncate(get_wifi_ssid(), 16)
+        # 6. Network IP & Connection. Interface discovery starts subprocesses,
+        # so cache it instead of repeating that work every five seconds.
+        identity_now = time.monotonic()
+        if (
+            identity_now - self.network_identity_checked_at
+            >= NETWORK_IDENTITY_REFRESH_SECONDS
+        ):
+            self.network_identity = (
+                get_ip_address(),
+                truncate(get_wifi_ssid(), 16),
+            )
+            self.network_identity_checked_at = identity_now
+        ip_addr, ssid = self.network_identity
         stats["ip"] = f"IP: {ip_addr}"
         stats["network"] = f"Connection: {ssid}"
 
@@ -865,7 +982,7 @@ class Dashboard(tk.Tk):
 
     def refresh_trains(self):
         def fetch():
-            response = requests.get(TRAIN_URL, timeout=12)
+            response = self.http_sessions["trains"].get(TRAIN_URL, timeout=12)
             response.raise_for_status()
             return parse_arrivals(
                 response.content,
@@ -878,7 +995,9 @@ class Dashboard(tk.Tk):
     def refresh_weather(self):
         def fetch():
             try:
-                response = requests.get(WEATHER_URL, timeout=12)
+                response = self.http_sessions["weather"].get(
+                    WEATHER_URL, timeout=12
+                )
                 response.raise_for_status()
                 current = response.json()["current"]
                 weather_code = int(current["weather_code"])
@@ -896,7 +1015,7 @@ class Dashboard(tk.Tk):
 
     def refresh_status(self):
         def fetch():
-            response = requests.get(ALERT_URL, timeout=12)
+            response = self.http_sessions["status"].get(ALERT_URL, timeout=12)
             response.raise_for_status()
             feed = gtfs_realtime_pb2.FeedMessage()
             feed.ParseFromString(response.content)
@@ -921,6 +1040,11 @@ class Dashboard(tk.Tk):
             self.north_minutes = times
         else:
             self.south_minutes = times
+
+        times_key = tuple(times)
+        if card["_times"] == times_key:
+            return
+        card["_times"] = times_key
 
         if not times:
             card["next"].config(text="--")
@@ -947,14 +1071,6 @@ class Dashboard(tk.Tk):
         has_arrival_error = bool(self.arrival_error) and not has_alert
         color = AMBER if has_alert or has_arrival_error else GREEN
         card_color = "#29200e" if has_alert or has_arrival_error else "#08202a"
-
-        self.status_card.config(bg=card_color)
-        for child in self.status_card.winfo_children():
-            child.config(bg=card_color)
-            for grand in child.winfo_children():
-                grand.config(bg=card_color)
-
-        self.ticker_canvas.config(bg=card_color)
         if has_alert:
             title = "!  SERVICE ALERT"
             main = "Service Change"
@@ -968,9 +1084,23 @@ class Dashboard(tk.Tk):
             main = "Good Service"
             msg_str = f"{SERVICE_NAME} service is operating normally."
 
+        formatted_str = f"{msg_str}    \u2022    "
+        signature = (card_color, color, title, main, formatted_str)
+        previous_signature = self._status_signature
+        if signature == previous_signature:
+            return
+        self._status_signature = signature
+
+        if previous_signature is None or previous_signature[0] != card_color:
+            self.status_card.config(bg=card_color)
+            for child in self.status_card.winfo_children():
+                child.config(bg=card_color)
+                for grand in child.winfo_children():
+                    grand.config(bg=card_color)
+            self.ticker_canvas.config(bg=card_color)
+
         self.status_title.config(text=title, fg=color)
         self.status_main.config(text=main)
-        formatted_str = f"{msg_str}    \u2022    "
 
         if self.ticker_text_str != formatted_str:
             self.ticker_text_str = formatted_str
@@ -978,11 +1108,9 @@ class Dashboard(tk.Tk):
             self.ticker_canvas.itemconfig(self.ticker_text_2, text=self.ticker_text_str)
             self.ticker_x = 0
             self.ticker_last_frame = time.perf_counter()
-            
-            self.update_idletasks()
-            bbox = self.ticker_canvas.bbox(self.ticker_text_1)
-            if bbox:
-                self.ticker_text_width = bbox[2] - bbox[0]
+            self.ticker_text_width = max(
+                1, self.ticker_font.measure(self.ticker_text_str)
+            )
 
     def _drain_events(self):
         while True:
@@ -1003,27 +1131,31 @@ class Dashboard(tk.Tk):
                 self._apply_arrivals(self.south, value[SOUTH_STOP_ID], is_north=False)
                 self._set_status(self.service_messages)
                 time_str = datetime.now().strftime("%I:%M %p").lstrip("0")
-                self.last_updated = f"UPDATED AT {time_str}"
-                self.footer.config(text=self.last_updated)
+                updated_text = f"UPDATED AT {time_str}"
+                if updated_text != self.last_updated:
+                    self.last_updated = updated_text
+                    self.footer.config(text=self.last_updated)
             elif kind == "weather":
                 temp, condition, wind, humidity, weather_code = value
-                self.weather_temp.config(text="%s\u00b0F" % temp)
                 weather_line = "%s \u2022 %s mph wind" % (condition, wind)
-                self.weather_cond.config(text=truncate(weather_line, 42))
-                self.weather_humidity.config(text="Humidity: %s%%" % humidity)
+                weather_values = (
+                    "%s\u00b0F" % temp,
+                    truncate(weather_line, 42),
+                    "Humidity: %s%%" % humidity,
+                )
+                if weather_values != self._weather_values:
+                    self._weather_values = weather_values
+                    self.weather_temp.config(text=weather_values[0])
+                    self.weather_cond.config(text=weather_values[1])
+                    self.weather_humidity.config(text=weather_values[2])
             elif kind == "status":
                 self.service_messages = value
                 self._set_status(self.service_messages)
             elif kind == "system":
-                self.cpu_temp_label.config(text=value["cpu_temp"])
-                self.ram_label.config(text=value["ram"])
-                self.disk_label.config(text=value["disk"])
-                self.load_label.config(text=value["load"])
-                self.uptime_label.config(text=value["uptime"])
-                self.ip_label.config(text=value["ip"])
-                self.net_label.config(text=value["network"])
-                self.down_speed_label.config(text=value["download"])
-                self.up_speed_label.config(text=value["upload"])
+                for key, label in self.system_label_map.items():
+                    if self._system_values.get(key) != value[key]:
+                        label.config(text=value[key])
+                self._system_values = value
         self.after(200, self._drain_events)
 
 
