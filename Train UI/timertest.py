@@ -80,20 +80,27 @@ NORTH_STOP_ID = TRAINUI_CONFIG["directions"]["N"]["stop_id"]
 SOUTH_STOP_ID = TRAINUI_CONFIG["directions"]["S"]["stop_id"]
 NORTH_DIRECTION_LABEL = TRAINUI_CONFIG["directions"]["N"]["label"]
 SOUTH_DIRECTION_LABEL = TRAINUI_CONFIG["directions"]["S"]["label"]
-# A fixed Central Park reference keeps weather citywide and station-independent.
-LATITUDE, LONGITUDE = 40.7812, -73.9665
+# Match Train UI Mini's fixed NYC weather reference so both displays report
+# the same conditions regardless of the selected station.
+LATITUDE, LONGITUDE = 40.5749, -73.9859
 
 TRAIN_URL = TRAINUI_CONFIG["feed_url"]
 ALERT_URL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fall-alerts"
 WEATHER_URL = (
     "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s"
-    "&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m&temperature_unit=fahrenheit"
+    "&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m"
+    "&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%%2FNew_York"
     % (LATITUDE, LONGITUDE)
 )
 TRAIN_REFRESH_MS = 30_000
 WEATHER_REFRESH_MS = 10 * 60_000
 STATUS_REFRESH_MS = 5 * 60_000
 SYSTEM_REFRESH_MS = 5_000
+TICKER_FRAME_MS = 16
+# The reference LED display moves at about 200 px/s at 1280x720. The requested
+# 1.5x pace is therefore approximately 300 px/s.
+TICKER_SPEED_PX_PER_SECOND = 300.0
+TICKER_MAX_FRAME_SECONDS = 0.05
 
 # ---- Palette & Geometry Constants ---------------------------------------
 BG = "#030914"
@@ -145,6 +152,15 @@ def interpolate_color(color1_hex, color2_hex, factor):
 def truncate(text, max_len=24):
     """Safely truncate strings to prevent text clipping on screen edges."""
     return text if len(text) <= max_len else text[:max_len - 3] + "..."
+
+
+def advance_ticker(position, cycle_width, elapsed_seconds,
+                   speed=TICKER_SPEED_PX_PER_SECOND):
+    """Advance a continuous marquee using elapsed time instead of frame count."""
+    if cycle_width <= 0:
+        return 0.0
+    distance = max(0.0, elapsed_seconds) * speed
+    return -((-position + distance) % cycle_width)
 
 
 def get_ip_address():
@@ -295,19 +311,27 @@ class Dashboard(tk.Tk):
         super().__init__()
         self.title(f"{SERVICE_NAME} Departures — {STATION_NAME}")
         self.configure(bg=BG)
+        # Apply cursor hiding to the root and every child widget. This is more
+        # reliable on Raspberry Pi OS Wayland than setting only the root after
+        # fullscreen mode has already been entered.
+        self.option_add("*Cursor", "none")
+        self.configure(cursor="none")
 
         # Production kiosk mode fills the screen and strips window borders.
         self.geometry(f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}+0+0")
         if fullscreen:
             self.overrideredirect(True)
             self.attributes("-fullscreen", True)
-            self.config(cursor="none")
 
         self.events = queue.Queue()
+        self.background_jobs = set()
         self.last_updated = "UPDATING..."
-        self.ticker_text_str = f"{SERVICE_NAME} service is operating normally."
+        self.service_messages = []
+        self.arrival_error = None
+        self.ticker_text_str = f"{SERVICE_NAME} service is operating normally.    •    "
         self.ticker_x = 0.0
         self.ticker_text_width = 800  # Safe default width
+        self.ticker_last_frame = None
         self.anim_step = 0
 
         # Departure minute tracking for tier flashing
@@ -319,6 +343,7 @@ class Dashboard(tk.Tk):
         self.last_net_time = time.time()
 
         self._build_ui()
+        self.after_idle(self._hide_pointer)
         # Freeze cards that contain changing network text so updates cannot
         # alter the overall screen proportions.
         self.after_idle(self._lock_dynamic_card_sizes)
@@ -342,6 +367,17 @@ class Dashboard(tk.Tk):
 
     def card(self, parent, color=GLASS_CARD, border_color=GLASS_BORDER):
         return RoundedCard(parent, bg=color, border_color=border_color, radius=16)
+
+    def _hide_pointer(self):
+        """Hide the mouse over the complete passive kiosk surface."""
+        pending = [self]
+        while pending:
+            widget = pending.pop()
+            try:
+                widget.configure(cursor="none")
+                pending.extend(widget.winfo_children())
+            except tk.TclError:
+                continue
 
     def fitted_font_size(self, text, max_pixels, max_size, min_size=9, weight="bold"):
         """Return the largest font size that fits without changing its container."""
@@ -647,20 +683,27 @@ class Dashboard(tk.Tk):
         self.after(33, self._animate_led_breathing)
 
     def _animate_ticker(self):
-        """Rock-solid marquee math that wraps flawlessly at high speed."""
-        STEP = 10.0  # Fast scroll speed
+        """Run a continuous, time-based marquee at the requested 1.5x pace."""
+        now = time.perf_counter()
+        if self.ticker_last_frame is None:
+            elapsed = 0.0
+        else:
+            elapsed = min(now - self.ticker_last_frame, TICKER_MAX_FRAME_SECONDS)
+        self.ticker_last_frame = now
 
-        self.ticker_x -= STEP
+        self.ticker_x = advance_ticker(
+            self.ticker_x,
+            self.ticker_text_width,
+            elapsed,
+        )
+        self.ticker_canvas.coords(self.ticker_text_1, self.ticker_x, 18)
+        self.ticker_canvas.coords(
+            self.ticker_text_2,
+            self.ticker_x + self.ticker_text_width,
+            18,
+        )
 
-        if self.ticker_x <= -self.ticker_text_width:
-            self.ticker_x += self.ticker_text_width
-
-        rx = int(self.ticker_x)
-
-        self.ticker_canvas.coords(self.ticker_text_1, rx, 18)
-        self.ticker_canvas.coords(self.ticker_text_2, rx + int(self.ticker_text_width), 18)
-
-        self.after(16, self._animate_ticker)  # 60 FPS update
+        self.after(TICKER_FRAME_MS, self._animate_ticker)
 
     def _tick_clock(self):
         now = datetime.now()
@@ -689,19 +732,21 @@ class Dashboard(tk.Tk):
             pass
         return rx_total, tx_total
 
-    def refresh_system_stats(self):
-        """Reads all available system telemetry: CPU temp, RAM, Disk, Load Average, Uptime, IP, Connection, and Speeds."""
+    def _collect_system_stats(self):
+        """Collect system telemetry away from Tk's animation thread."""
+        stats = {}
+
         # 1. CPU Temperature
         try:
             if os.path.exists("/sys/class/thermal/thermal_zone0/temp"):
                 with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
                     temp_c = float(f.read()) / 1000.0
                     temp_f = temp_c * 9.0 / 5.0 + 32.0
-                    self.cpu_temp_label.config(text=f"CPU Temp: {round(temp_f)}\u00b0F ({round(temp_c)}\u00b0C)")
+                    stats["cpu_temp"] = f"CPU Temp: {round(temp_f)}\u00b0F ({round(temp_c)}\u00b0C)"
             else:
-                self.cpu_temp_label.config(text="CPU Temp: Normal")
+                stats["cpu_temp"] = "CPU Temp: Normal"
         except Exception:
-            self.cpu_temp_label.config(text="CPU Temp: N/A")
+            stats["cpu_temp"] = "CPU Temp: N/A"
 
         # 2. RAM Usage
         try:
@@ -719,11 +764,11 @@ class Dashboard(tk.Tk):
                 used_pct = round(used_kb / total * 100)
                 total_mb = round(total / 1024)
                 used_mb = round(used_kb / 1024)
-                self.ram_label.config(text=f"RAM: {used_mb}MB / {total_mb}MB ({used_pct}%)")
+                stats["ram"] = f"RAM: {used_mb}MB / {total_mb}MB ({used_pct}%)"
             else:
-                self.ram_label.config(text="RAM: N/A")
+                stats["ram"] = "RAM: N/A"
         except Exception:
-            self.ram_label.config(text="RAM: N/A")
+            stats["ram"] = "RAM: N/A"
 
         # 3. Disk Usage
         try:
@@ -735,11 +780,11 @@ class Dashboard(tk.Tk):
                 disk_pct = round(used_bytes / total_bytes * 100)
                 total_gb = round(total_bytes / (1024**3), 1)
                 used_gb = round(used_bytes / (1024**3), 1)
-                self.disk_label.config(text=f"Disk: {used_gb}GB / {total_gb}GB ({disk_pct}%)")
+                stats["disk"] = f"Disk: {used_gb}GB / {total_gb}GB ({disk_pct}%)"
             else:
-                self.disk_label.config(text="Disk: N/A")
+                stats["disk"] = "Disk: N/A"
         except Exception:
-            self.disk_label.config(text="Disk: N/A")
+            stats["disk"] = "Disk: N/A"
 
         # 4. CPU Load Average (Truncated to prevent clipping)
         try:
@@ -747,11 +792,11 @@ class Dashboard(tk.Tk):
                 with open("/proc/loadavg", "r") as f:
                     load_vals = f.read().split()[:3]
                 load_str = f"Load Avg: {load_vals[0]}, {load_vals[1]}, {load_vals[2]}"
-                self.load_label.config(text=truncate(load_str, 28))
+                stats["load"] = truncate(load_str, 28)
             else:
-                self.load_label.config(text="Load Avg: N/A")
+                stats["load"] = "Load Avg: N/A"
         except Exception:
-            self.load_label.config(text="Load Avg: N/A")
+            stats["load"] = "Load Avg: N/A"
 
         # 5. Uptime
         try:
@@ -760,17 +805,17 @@ class Dashboard(tk.Tk):
                     uptime_seconds = float(f.read().split()[0])
                 hours = int(uptime_seconds // 3600)
                 minutes = int((uptime_seconds % 3600) // 60)
-                self.uptime_label.config(text=f"Uptime: {hours}h {minutes}m")
+                stats["uptime"] = f"Uptime: {hours}h {minutes}m"
             else:
-                self.uptime_label.config(text="Uptime: N/A")
+                stats["uptime"] = "Uptime: N/A"
         except Exception:
-            self.uptime_label.config(text="Uptime: N/A")
+            stats["uptime"] = "Uptime: N/A"
 
         # 6. Network IP & Connection
         ip_addr = get_ip_address()
         ssid = truncate(get_wifi_ssid(), 16)
-        self.ip_label.config(text=f"IP: {ip_addr}")
-        self.net_label.config(text=f"Connection: {ssid}")
+        stats["ip"] = f"IP: {ip_addr}"
+        stats["network"] = f"Connection: {ssid}"
 
         # 7. Network Upload/Download Speeds
         current_rx, current_tx = self._get_total_net_bytes()
@@ -795,12 +840,22 @@ class Dashboard(tk.Tk):
             else:
                 return f"{int(bytes_sec)} B/s"
 
-        self.down_speed_label.config(text=f"Download: {format_speed(rx_rate)}")
-        self.up_speed_label.config(text=f"Upload: {format_speed(tx_rate)}")
+        stats["download"] = f"Download: {format_speed(rx_rate)}"
+        stats["upload"] = f"Upload: {format_speed(tx_rate)}"
+
+        return stats
+
+    def refresh_system_stats(self):
+        """Refresh telemetry without pausing the clock or service marquee."""
+        self._background("system", self._collect_system_stats)
 
         self.after(SYSTEM_REFRESH_MS, self.refresh_system_stats)
 
     def _background(self, kind, func):
+        if kind in self.background_jobs:
+            return
+        self.background_jobs.add(kind)
+
         def worker():
             try:
                 self.events.put((kind, func(), None))
@@ -841,26 +896,23 @@ class Dashboard(tk.Tk):
 
     def refresh_status(self):
         def fetch():
-            try:
-                response = requests.get(ALERT_URL, timeout=12)
-                response.raise_for_status()
-                feed = gtfs_realtime_pb2.FeedMessage()
-                feed.ParseFromString(response.content)
-                messages = []
-                for entity in feed.entity:
-                    if not entity.HasField("alert"):
-                        continue
-                    alert = entity.alert
-                    routes = {item.route_id for item in alert.informed_entity if item.route_id}
-                    stops = {item.stop_id for item in alert.informed_entity if item.stop_id}
-                    selected_stops = {STATION_ID, NORTH_STOP_ID, SOUTH_STOP_ID}
-                    if not routes.intersection(ROUTE_IDS) and not stops.intersection(selected_stops):
-                        continue
-                    text = alert.header_text.translation[0].text if alert.header_text.translation else f"{SERVICE_NAME} service change"
-                    messages.append(text.replace("\n", " "))
-                return messages
-            except Exception:
-                return []
+            response = requests.get(ALERT_URL, timeout=12)
+            response.raise_for_status()
+            feed = gtfs_realtime_pb2.FeedMessage()
+            feed.ParseFromString(response.content)
+            messages = []
+            for entity in feed.entity:
+                if not entity.HasField("alert"):
+                    continue
+                alert = entity.alert
+                routes = {item.route_id for item in alert.informed_entity if item.route_id}
+                stops = {item.stop_id for item in alert.informed_entity if item.stop_id}
+                selected_stops = {STATION_ID, NORTH_STOP_ID, SOUTH_STOP_ID}
+                if not routes.intersection(ROUTE_IDS) and not stops.intersection(selected_stops):
+                    continue
+                text = alert.header_text.translation[0].text if alert.header_text.translation else f"{SERVICE_NAME} service change"
+                messages.append(text.replace("\n", " "))
+            return messages
         self._background("status", fetch)
         self.after(STATUS_REFRESH_MS, self.refresh_status)
 
@@ -892,8 +944,9 @@ class Dashboard(tk.Tk):
 
     def _set_status(self, messages):
         has_alert = bool(messages)
-        color = AMBER if has_alert else GREEN
-        card_color = "#29200e" if has_alert else "#08202a"
+        has_arrival_error = bool(self.arrival_error) and not has_alert
+        color = AMBER if has_alert or has_arrival_error else GREEN
+        card_color = "#29200e" if has_alert or has_arrival_error else "#08202a"
 
         self.status_card.config(bg=card_color)
         for child in self.status_card.winfo_children():
@@ -902,10 +955,21 @@ class Dashboard(tk.Tk):
                 grand.config(bg=card_color)
 
         self.ticker_canvas.config(bg=card_color)
-        self.status_title.config(text=("!  SERVICE ALERT" if has_alert else "OK  SERVICE STATUS"), fg=color)
-        self.status_main.config(text=("Service Change" if has_alert else "Good Service"))
+        if has_alert:
+            title = "!  SERVICE ALERT"
+            main = "Service Change"
+            msg_str = messages[0]
+        elif has_arrival_error:
+            title = "!  LIVE DATA STATUS"
+            main = "Connection Issue"
+            msg_str = f"MTA arrivals unavailable. Retrying automatically. {self.arrival_error}"
+        else:
+            title = "OK  SERVICE STATUS"
+            main = "Good Service"
+            msg_str = f"{SERVICE_NAME} service is operating normally."
 
-        msg_str = messages[0] if has_alert else f"{SERVICE_NAME} service is operating normally."
+        self.status_title.config(text=title, fg=color)
+        self.status_main.config(text=main)
         formatted_str = f"{msg_str}    \u2022    "
 
         if self.ticker_text_str != formatted_str:
@@ -913,6 +977,7 @@ class Dashboard(tk.Tk):
             self.ticker_canvas.itemconfig(self.ticker_text_1, text=self.ticker_text_str)
             self.ticker_canvas.itemconfig(self.ticker_text_2, text=self.ticker_text_str)
             self.ticker_x = 0
+            self.ticker_last_frame = time.perf_counter()
             
             self.update_idletasks()
             bbox = self.ticker_canvas.bbox(self.ticker_text_1)
@@ -925,12 +990,18 @@ class Dashboard(tk.Tk):
                 kind, value, error = self.events.get_nowait()
             except queue.Empty:
                 break
+            self.background_jobs.discard(kind)
             if error:
                 self.footer.config(text="LAST UPDATE FAILED - RETRYING AUTOMATICALLY")
+                if kind == "trains":
+                    self.arrival_error = error
+                    self._set_status(self.service_messages)
                 continue
             if kind == "trains":
+                self.arrival_error = None
                 self._apply_arrivals(self.north, value[NORTH_STOP_ID], is_north=True)
                 self._apply_arrivals(self.south, value[SOUTH_STOP_ID], is_north=False)
+                self._set_status(self.service_messages)
                 time_str = datetime.now().strftime("%I:%M %p").lstrip("0")
                 self.last_updated = f"UPDATED AT {time_str}"
                 self.footer.config(text=self.last_updated)
@@ -941,7 +1012,18 @@ class Dashboard(tk.Tk):
                 self.weather_cond.config(text=truncate(weather_line, 42))
                 self.weather_humidity.config(text="Humidity: %s%%" % humidity)
             elif kind == "status":
-                self._set_status(value)
+                self.service_messages = value
+                self._set_status(self.service_messages)
+            elif kind == "system":
+                self.cpu_temp_label.config(text=value["cpu_temp"])
+                self.ram_label.config(text=value["ram"])
+                self.disk_label.config(text=value["disk"])
+                self.load_label.config(text=value["load"])
+                self.uptime_label.config(text=value["uptime"])
+                self.ip_label.config(text=value["ip"])
+                self.net_label.config(text=value["network"])
+                self.down_speed_label.config(text=value["download"])
+                self.up_speed_label.config(text=value["upload"])
         self.after(200, self._drain_events)
 
 

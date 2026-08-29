@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+export TRAINUI_CONFIG=/etc/trainui/config.json
+export PYTHONUNBUFFERED=1
+
+TRAINUI_STATE_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/trainui"
+TRAINUI_LOG_FILE="$TRAINUI_STATE_DIR/trainui.log"
+TRAINUI_LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/trainui-${UID}.lock"
+
+mkdir -p "$TRAINUI_STATE_DIR"
+exec 9>"$TRAINUI_LOCK_FILE"
+flock -n 9 || exit 0
+
+rotate_display() {
+    local display_output=""
+
+    if command -v wlr-randr >/dev/null 2>&1; then
+        for _ in $(seq 1 20); do
+            display_output="$(wlr-randr 2>/dev/null | awk '/^[^[:space:]]/ {print $1; exit}')"
+            if [ -n "$display_output" ] && \
+               wlr-randr --output "$display_output" --transform 270 \
+                   >>"$TRAINUI_LOG_FILE" 2>&1; then
+                return 0
+            fi
+            sleep 0.5
+        done
+    fi
+
+    if command -v xrandr >/dev/null 2>&1; then
+        display_output="$(xrandr --query 2>/dev/null | awk '/ connected/{print $1; exit}')"
+        if [ -n "$display_output" ]; then
+            xrandr --output "$display_output" --rotate left \
+                >>"$TRAINUI_LOG_FILE" 2>&1 || true
+        fi
+    fi
+}
+
+hide_pointer() {
+    if [ -n "${DISPLAY:-}" ]; then
+        xsetroot -cursor_name none >/dev/null 2>&1 || true
+        unclutter -idle 0.1 -root >/dev/null 2>&1 &
+    fi
+}
+
+keep_display_awake() {
+    while true; do
+        if command -v xset >/dev/null 2>&1; then
+            xset s off >/dev/null 2>&1 || true
+            xset s noblank >/dev/null 2>&1 || true
+            xset -dpms >/dev/null 2>&1 || true
+            xset dpms force on >/dev/null 2>&1 || true
+        fi
+
+        if command -v wlr-randr >/dev/null 2>&1; then
+            wlr-randr 2>/dev/null | awk '
+                /^[^[:space:]]/ { output=$1 }
+                /Enabled: no/ && output != "" { print output }
+            ' | while IFS= read -r disabled_output; do
+                wlr-randr --output "$disabled_output" --on \
+                    >>"$TRAINUI_LOG_FILE" 2>&1 || true
+            done
+        fi
+        sleep 30
+    done
+}
+
+printf '\n===== TrainUI startup: %s =====\n' "$(date)" >>"$TRAINUI_LOG_FILE"
+rotate_display
+hide_pointer
+keep_display_awake &
+TRAINUI_DISPLAY_WATCHDOG_PID=$!
+trap 'kill "$TRAINUI_DISPLAY_WATCHDOG_PID" 2>/dev/null || true' EXIT INT TERM
+
+cd /opt/trainui
+/opt/trainui/.venv/bin/python /opt/trainui/timertest.py \
+    >>"$TRAINUI_LOG_FILE" 2>&1
+
