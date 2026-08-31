@@ -5,8 +5,7 @@ REPO_URL="https://github.com/AloeVeraZ/TrainUI.git"
 REPO_DIR="${TRAINUI_REPO_DIR:-${TRAINUI_APP_DIR:-$HOME/TrainUI}}"
 APP_DIR="$REPO_DIR/Train UI XL"
 VENV_DIR="$APP_DIR/.venv"
-SOURCE_DIR="$APP_DIR"
-MAIN_FILE=""
+MAIN_FILE="$APP_DIR/timertest.py"
 RUNNER="$APP_DIR/run_trainui.sh"
 AUTOSTART_DIR="$HOME/.config/autostart"
 LABWC_DIR="$HOME/.config/labwc"
@@ -161,13 +160,11 @@ install_fresh_copy() {
     say "The previous installation was preserved at $backup_dir"
 }
 
-if [ -d "$APP_DIR/.git" ]; then
-    # Older installers generated run_trainui.sh without adding it to .gitignore.
-    # Ignore installer-owned runtime files (run_trainui.sh, logs, locks, venv)
-    # so existing checkouts can be upgraded.
+if [ -d "$REPO_DIR/.git" ]; then
+    # Ignore installer-owned runtime files so existing checkouts can upgrade.
     checkout_changes=""
     checkout_is_valid=true
-    if checkout_changes="$(git -C "$APP_DIR" status --porcelain --untracked-files=all)"; then
+    if checkout_changes="$(git -C "$REPO_DIR" status --porcelain --untracked-files=all)"; then
         checkout_changes="$(
             printf '%s\n' "$checkout_changes" |
                 grep -vE '^\?\? (run_trainui\.sh|trainui\.log|\.trainui\.lock|\.venv/)' || true
@@ -198,31 +195,22 @@ else
     fi
 fi
 
-# TrainUI originally occupied the repository root. The current family repo
-# keeps the Raspberry Pi build in "Train UI/" beside "Train UI Mini/". Detect
-# both layouts so existing flat checkouts and current clones use the same
-# installer and preserve the same ~/TrainUI runtime directory.
-if [ -f "$APP_DIR/Train UI/timertest.py" ]; then
-    SOURCE_DIR="$APP_DIR/Train UI"
-fi
-MAIN_FILE="$SOURCE_DIR/timertest.py"
-
 if [ ! -f "$MAIN_FILE" ]; then
     fail "timertest.py was not found in the GitHub repository."
 fi
 
-if [ ! -f "$SOURCE_DIR/installer/configure.py" ] || \
-   [ ! -f "$SOURCE_DIR/installer/subway_catalog.json" ]; then
+if [ ! -f "$APP_DIR/installer/configure.py" ] || \
+   [ ! -f "$APP_DIR/installer/subway_catalog.json" ]; then
     fail "The route and station configurator was not found in the GitHub repository."
 fi
 
 say "Configuring the train and station..."
 mkdir -p "$TRAINUI_CONFIG_DIR"
 if [ -t 1 ] && [ -r /dev/tty ]; then
-    python3 "$SOURCE_DIR/installer/configure.py" \
+    python3 "$APP_DIR/installer/configure.py" \
         --config "$TRAINUI_CONFIG_FILE" </dev/tty
 else
-    python3 "$SOURCE_DIR/installer/configure.py" \
+    python3 "$APP_DIR/installer/configure.py" \
         --config "$TRAINUI_CONFIG_FILE" \
         --non-interactive
 fi
@@ -240,9 +228,9 @@ wifi.powersave=2
 EOF
 fi
 
-if [ ! -f "$SOURCE_DIR/installer/connectivity-watchdog.sh" ] || \
-   [ ! -f "$SOURCE_DIR/installer/wifi_setup.py" ] || \
-   [ ! -f "$SOURCE_DIR/installer/systemd/trainui-wifi-setup.service" ]; then
+if [ ! -f "$APP_DIR/installer/connectivity-watchdog.sh" ] || \
+   [ ! -f "$APP_DIR/installer/wifi_setup.py" ] || \
+   [ ! -f "$APP_DIR/installer/systemd/trainui-wifi-setup.service" ]; then
     fail "The Wi-Fi setup files were not found in the GitHub repository."
 fi
 
@@ -250,19 +238,19 @@ fi
 # do not let NetworkManager control Wi-Fi. Current Raspberry Pi OS uses the new
 # service below; retaining this fallback keeps installer upgrades compatible.
 sudo install -m 0755 \
-    "$SOURCE_DIR/installer/connectivity-watchdog.sh" \
+    "$APP_DIR/installer/connectivity-watchdog.sh" \
     /usr/local/sbin/trainui-connectivity
 sudo install -m 0755 \
-    "$SOURCE_DIR/installer/wifi_setup.py" \
+    "$APP_DIR/installer/wifi_setup.py" \
     /usr/local/sbin/trainui-wifi-setup
 sudo install -m 0644 \
-    "$SOURCE_DIR/installer/systemd/trainui-connectivity.service" \
+    "$APP_DIR/installer/systemd/trainui-connectivity.service" \
     /etc/systemd/system/trainui-connectivity.service
 sudo install -m 0644 \
-    "$SOURCE_DIR/installer/systemd/trainui-connectivity.timer" \
+    "$APP_DIR/installer/systemd/trainui-connectivity.timer" \
     /etc/systemd/system/trainui-connectivity.timer
 sudo install -m 0644 \
-    "$SOURCE_DIR/installer/systemd/trainui-wifi-setup.service" \
+    "$APP_DIR/installer/systemd/trainui-wifi-setup.service" \
     /etc/systemd/system/trainui-wifi-setup.service
 
 sudo systemctl daemon-reload
@@ -291,15 +279,6 @@ say "Preparing the TrainUI Python environment..."
 
 if [ ! -x "$VENV_DIR/bin/python" ]; then
     python3 -m venv --system-site-packages "$VENV_DIR"
-
-    "$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
-
-    if [ -f "$SOURCE_DIR/requirements.txt" ]; then
-        "$VENV_DIR/bin/python" -m pip install -r "$SOURCE_DIR/requirements.txt"
-    fi
-else
-    say "Reusing the existing Python environment."
-fi
 else
     say "Reusing the existing Python environment."
 fi
@@ -648,7 +627,6 @@ fi
 say "Installation complete."
 echo "The Pi will reboot in five seconds."
 echo "TrainUI will start automatically at 270 degrees."
-echo "Network-agnostic Wi-Fi reliability checks run every 30 seconds."
 echo "A frozen TrainUI process restarts automatically within about one minute."
 echo "The application is also recycled once daily and the Pi hardware watchdog is enabled."
 if [ "$WIFI_SETUP_ENABLED" = true ]; then

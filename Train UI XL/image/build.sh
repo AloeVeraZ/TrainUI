@@ -60,10 +60,14 @@ install -m 0644 "$TRAINUI_PROJECT_DIR/installer/subway_catalog.json" \
     "$CUSTOM_STAGE_FILES/app/installer/subway_catalog.json"
 install -m 0755 "$TRAINUI_PROJECT_DIR/installer/connectivity-watchdog.sh" \
     "$CUSTOM_STAGE_FILES/app/installer/connectivity-watchdog.sh"
+install -m 0755 "$TRAINUI_PROJECT_DIR/installer/wifi_setup.py" \
+    "$CUSTOM_STAGE_FILES/app/installer/wifi_setup.py"
 install -m 0644 "$TRAINUI_PROJECT_DIR/installer/systemd/trainui-connectivity.service" \
     "$CUSTOM_STAGE_FILES/app/installer/systemd/trainui-connectivity.service"
 install -m 0644 "$TRAINUI_PROJECT_DIR/installer/systemd/trainui-connectivity.timer" \
     "$CUSTOM_STAGE_FILES/app/installer/systemd/trainui-connectivity.timer"
+install -m 0644 "$TRAINUI_PROJECT_DIR/installer/systemd/trainui-wifi-setup.service" \
+    "$CUSTOM_STAGE_FILES/app/installer/systemd/trainui-wifi-setup.service"
 install -m 0644 "$TRAINUI_PROJECT_DIR/installer/systemd/90-trainui-runtime-watchdog.conf" \
     "$CUSTOM_STAGE_FILES/app/installer/systemd/90-trainui-runtime-watchdog.conf"
 

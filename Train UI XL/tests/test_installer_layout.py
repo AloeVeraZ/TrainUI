@@ -18,6 +18,24 @@ RUNTIME_WATCHDOG_PATH = (
     APP_ROOT / "installer" / "systemd" / "90-trainui-runtime-watchdog.conf"
 )
 ASSEMBLY_GUIDE_PATH = APP_ROOT / "Assembly Guide" / "README.md"
+ASSEMBLY_STEP_ASSETS = {
+    "01-faceplate-before-inserts.jpg",
+    "02-faceplate-with-inserts.jpg",
+    "03-screen-seated-in-faceplate.jpg",
+}
+ASSEMBLY_STEP_2_ASSETS = {
+    "04-middle-plate-before-inserts.jpg",
+    "05-middle-plate-with-pi-inserts.jpg",
+    "06-pi-zero-w-mounted-and-wired.jpg",
+}
+ASSEMBLY_STEP_3_ASSETS = {
+    "07-power-cable-fed-before-soldering.jpg",
+    "08-usbc-power-board-soldered-and-mounted.jpg",
+    "09-finished-internal-power-wiring.jpg",
+}
+ASSEMBLY_STEP_4_ASSETS = {
+    "10-back-plate-final-assembly.jpg",
+}
 BOM_ASSETS = {
     "B0G5YZJLVZ": "usb-c-to-micro-usb-adapter.jpg",
     "B0CNGV7FQJ": "angled-mini-hdmi-cable.jpg",
@@ -91,8 +109,10 @@ class InstallerLayoutTests(unittest.TestCase):
             APP_ROOT / "installer" / "configure.py",
             APP_ROOT / "installer" / "subway_catalog.json",
             APP_ROOT / "installer" / "connectivity-watchdog.sh",
+            APP_ROOT / "installer" / "wifi_setup.py",
             APP_ROOT / "installer" / "systemd" / "trainui-connectivity.service",
             APP_ROOT / "installer" / "systemd" / "trainui-connectivity.timer",
+            APP_ROOT / "installer" / "systemd" / "trainui-wifi-setup.service",
             RUNTIME_WATCHDOG_PATH,
         )
         for path in expected_paths:
@@ -130,6 +150,56 @@ class InstallerLayoutTests(unittest.TestCase):
                 self.assertIn(f"https://www.amazon.com/dp/{asin}", self.readme)
                 self.assertIn(filename, self.readme)
                 self.assertTrue((parts_directory / filename).is_file())
+
+    def test_first_assembly_step_keeps_its_instructions_and_photos(self):
+        self.assertIn("Step 1 — Prepare the front faceplate", self.assembly_guide)
+        self.assertIn("4 M3 × 4 mm heat-set threaded inserts", self.assembly_guide)
+        steps_directory = ASSEMBLY_GUIDE_PATH.parent / "images" / "steps"
+        for filename in ASSEMBLY_STEP_ASSETS:
+            with self.subTest(filename=filename):
+                self.assertIn(filename, self.assembly_guide)
+                self.assertTrue((steps_directory / filename).is_file())
+
+    def test_second_assembly_step_keeps_its_instructions_and_photos(self):
+        self.assertIn("Step 2 — Prepare the middle plate", self.assembly_guide)
+        self.assertIn("4 M2 × 4 mm heat-set threaded inserts", self.assembly_guide)
+        self.assertIn("back plate will not fit correctly", self.assembly_guide)
+        steps_directory = ASSEMBLY_GUIDE_PATH.parent / "images" / "steps"
+        for filename in ASSEMBLY_STEP_2_ASSETS:
+            with self.subTest(filename=filename):
+                self.assertIn(filename, self.assembly_guide)
+                self.assertTrue((steps_directory / filename).is_file())
+
+    def test_third_assembly_step_keeps_power_wiring_order_and_photos(self):
+        self.assertIn("Step 3 — Build and install the USB-C power inlet", self.assembly_guide)
+        self.assertIn("before soldering", self.assembly_guide)
+        self.assertIn("red wire to `V`", self.assembly_guide)
+        self.assertIn("black wire to `G`", self.assembly_guide)
+        self.assertIn("not the `USB`/OTG port", self.assembly_guide)
+        steps_directory = ASSEMBLY_GUIDE_PATH.parent / "images" / "steps"
+        for filename in ASSEMBLY_STEP_3_ASSETS:
+            with self.subTest(filename=filename):
+                self.assertIn(filename, self.assembly_guide)
+                self.assertTrue((steps_directory / filename).is_file())
+
+    def test_final_assembly_step_keeps_squaring_instructions_and_photo(self):
+        self.assertIn("Step 4 — Square and close the enclosure", self.assembly_guide)
+        self.assertIn("4 M3 × 25 mm screws", self.assembly_guide)
+        self.assertIn("approximately 90 degrees to the tabletop", self.assembly_guide)
+        self.assertIn("no cable may cross an edge", self.assembly_guide)
+        steps_directory = ASSEMBLY_GUIDE_PATH.parent / "images" / "steps"
+        for filename in ASSEMBLY_STEP_4_ASSETS:
+            with self.subTest(filename=filename):
+                self.assertIn(filename, self.assembly_guide)
+                self.assertTrue((steps_directory / filename).is_file())
+
+    def test_wifi_setup_fallback_is_installed_by_script_and_image(self):
+        self.assertIn("trainui-wifi-setup init", self.installer)
+        self.assertIn("enable --now trainui-wifi-setup.service", self.installer)
+        self.assertIn("installer/wifi_setup.py", self.image_build)
+        self.assertIn("trainui-wifi-setup.service", self.image_build)
+        self.assertIn("trainui-wifi-setup", self.image_stage)
+        self.assertIn("enable trainui-wifi-setup.service", self.image_stage)
 
     def test_public_command_points_directly_to_xl_installer(self):
         self.assertGreaterEqual(self.readme.count(PUBLIC_INSTALL_COMMAND), 2)

@@ -52,7 +52,7 @@ Choose a train and station when the menus open. The choice is saved in:
 - Builds the Python environment for Train UI XL.
 - Creates the rotated fullscreen launcher.
 - Starts Train UI automatically with Wayland or X11.
-- Adds a Wi-Fi connectivity watchdog.
+- Preserves the Imager-created Wi-Fi and adds a protected setup hotspot after 30 seconds offline.
 - Disables Raspberry Pi OS screen blanking and sleep.
 - Checks the Python code before rebooting.
 
@@ -66,8 +66,9 @@ If the Git checkout has local changes or damage, the installer saves it as `~/Tr
 | `configure.py` | Train and station menu |
 | `subway_catalog.json` | Subway and SIR route/station catalog |
 | `build_subway_catalog.py` | Rebuilds the catalog from MTA data |
-| `connectivity-watchdog.sh` | Checks and restores the saved network connection |
-| `systemd/` | Timer and service files for the watchdog |
+| `wifi_setup.py` | Retries saved Wi-Fi, creates the fallback hotspot, and serves the credential page |
+| `connectivity-watchdog.sh` | Legacy reconnect fallback for non-NetworkManager systems |
+| `systemd/` | Automatic Wi-Fi setup service plus legacy watchdog units |
 
 ## Troubleshooting
 
@@ -77,11 +78,14 @@ View the Train UI log:
 tail -n 100 "$HOME/TrainUI/Train UI XL/trainui.log"
 ```
 
-Check the Wi-Fi watchdog:
+If normal Wi-Fi and Ethernet are unavailable for 30 seconds, join **TrainUI**
+with password **TRAINUI1** and open `http://10.42.0.1`.
+
+Check the automatic Wi-Fi setup service:
 
 ```bash
-systemctl status trainui-connectivity.timer
-sudo journalctl -u trainui-connectivity.service --since today
+systemctl status trainui-wifi-setup.service
+sudo journalctl -u trainui-wifi-setup.service --since today
 ```
 
 If the installer says there is no interactive terminal, reconnect with SSH and run the command directly in that window.

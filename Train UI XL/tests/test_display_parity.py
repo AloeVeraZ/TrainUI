@@ -72,6 +72,21 @@ class DisplayParityTests(unittest.TestCase):
         self.assertIn("self.after(2_500, self.refresh_weather)", source)
         self.assertIn("self.after(5_000, self.refresh_status)", source)
 
+    def test_system_health_only_shows_password_for_setup_hotspot(self):
+        self.assertEqual(
+            (
+                "Setup page: http://10.42.0.1",
+                "Hotspot: TrainUI  Password: TRAINUI1",
+            ),
+            runtime.format_network_debug("10.42.0.1", "TrainUI"),
+        )
+        normal_rows = runtime.format_network_debug("192.168.1.50", "Home Wi-Fi")
+        self.assertEqual(
+            ("IP: 192.168.1.50", "Connection: Home Wi-Fi"),
+            normal_rows,
+        )
+        self.assertNotIn("Password", " ".join(normal_rows))
+
     def test_visible_clock_drives_a_tmpfs_heartbeat(self):
         source = TIMETEST_PATH.read_text(encoding="utf-8")
         clock_method = source[

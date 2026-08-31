@@ -239,6 +239,20 @@ def get_wifi_ssid():
     return "Disconnected"
 
 
+def format_network_debug(ip_address, wifi_ssid):
+    """Return the two System Health network rows for the active Wi-Fi mode."""
+
+    if wifi_ssid == WIFI_SETUP_SSID:
+        return (
+            f"Setup page: {WIFI_SETUP_URL}",
+            f"Hotspot: {WIFI_SETUP_SSID}  Password: {WIFI_SETUP_PASSWORD}",
+        )
+    return (
+        f"IP: {ip_address}",
+        f"Connection: {truncate(wifi_ssid, 16)}",
+    )
+
+
 def parse_arrivals(content, route_ids, stop_ids, now=None):
     """Extract the next three arrivals for configured stops from an MTA feed."""
     feed = gtfs_realtime_pb2.FeedMessage()
@@ -961,33 +975,24 @@ class Dashboard(tk.Tk):
         except Exception:
             stats["uptime"] = "Uptime: N/A"
 
-# 6. Network IP & Connection. Interface discovery starts subprocesses,
-# so cache it instead of repeating that work every five seconds.
-identity_now = time.monotonic()
-if (
-    identity_now - self.network_identity_checked_at
-    >= NETWORK_IDENTITY_REFRESH_SECONDS
-):
-    self.network_identity = (
-        get_ip_address(),
-        get_wifi_ssid(),
-    )
-    self.network_identity_checked_at = identity_now
-ip_addr, wifi_ssid = self.network_identity
-# Always expose basic values into stats for other UI regions.
-stats["ip"] = f"IP: {ip_addr}"
-stats["network"] = f"Connection: {truncate(wifi_ssid, 16)}"
-if wifi_ssid == WIFI_SETUP_SSID:
-    # Put everything needed to reach the fallback portal on the TrainUI
-    # screen so setup does not depend on having the README nearby.
-    self.ip_label.config(text=f"Setup page: {WIFI_SETUP_URL}")
-    self.net_label.config(
-        text=f"Hotspot: {WIFI_SETUP_SSID}  Password: {WIFI_SETUP_PASSWORD}"
-    )
-else:
-    # Never display credentials for a normal client connection.
-    self.ip_label.config(text=stats["ip"])
-    self.net_label.config(text=stats["network"])
+        # 6. Network IP & Connection. Interface discovery starts subprocesses,
+        # so cache it instead of repeating that work every five seconds.
+        identity_now = time.monotonic()
+        if (
+            identity_now - self.network_identity_checked_at
+            >= NETWORK_IDENTITY_REFRESH_SECONDS
+        ):
+            self.network_identity = (
+                get_ip_address(),
+                get_wifi_ssid(),
+            )
+            self.network_identity_checked_at = identity_now
+        ip_addr, wifi_ssid = self.network_identity
+        # The UI thread applies these values in _drain_events. Only the setup
+        # hotspot exposes its password; client Wi-Fi never does.
+        stats["ip"], stats["network"] = format_network_debug(
+            ip_addr, wifi_ssid
+        )
 
         # 7. Network Upload/Download Speeds
         current_rx, current_tx = self._get_total_net_bytes()

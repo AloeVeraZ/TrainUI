@@ -21,12 +21,12 @@
 
 Train UI XL is the first version of Train UI. I built it around an original Raspberry Pi Zero W and a 10.1-inch HDMI screen so I could see arrivals, service changes, weather, time, and the Pi's health from across the room.
 
-The display starts by itself when the Pi boots. The installer handles the Python libraries, screen rotation, automatic startup, Wi-Fi watchdog, and the train and station menu. It uses public MTA and Open-Meteo data, so it does not need an API key.
+The display starts by itself when the Pi boots. The installer handles the Python libraries, screen rotation, automatic startup, Wi-Fi recovery and setup, and the train and station menu. It uses public MTA and Open-Meteo data, so it does not need an API key.
 
 > [!WARNING]
-> **This build requires soldering and wire stripping.** Mount the USB-C female socket board to the printed back piece first. Then cut the USB-C end off the USB-C-to-Micro-USB adapter lead, strip the cable, identify and verify 5V and ground with a multimeter, and solder those wires to the matching pads on the mounted socket board. Keep all power disconnected while working, insulate unused conductors, and check polarity and shorts before plugging anything in.
+> **This build requires soldering and wire stripping.** Cut the USB-C end off the USB-C-to-Micro-USB adapter lead, keep the Micro-USB plug, and feed the cut end through the small opening in the printed back piece before soldering—the molded Micro-USB plug will not fit through that opening. Identify and verify 5V and ground with a multimeter, solder red to `V` and black to `G` on the loose USB-C socket board, then bolt the board into the back piece. Keep all power disconnected while working, insulate unused conductors, and check polarity and shorts before plugging anything in.
 >
-> The order matters. Once the board is bolted into the back piece and the cable is soldered, the wiring traps that printed piece in the assembly. Changing the back later means desoldering the cable, replacing the print, and soldering it again. I designed it this way so the USB-C port can sit recessed and flush with the outside of the enclosure instead of sticking out.
+> The order matters. Feed the cable through the printed back piece, solder it to the socket board, and only then bolt the board in place. The finished wiring traps that printed piece in the assembly, so changing the back later requires desoldering the cable. I designed it this way so the USB-C port can sit recessed and flush with the outside of the enclosure instead of sticking out.
 
 ## Parts
 
@@ -65,7 +65,7 @@ The photos below are stored in this repository as visual references. The product
     <td width="50%" valign="top" align="center">
       <a href="https://www.amazon.com/dp/B0F3WVBGCP"><img src="Assembly%20Guide/images/parts/usb-c-panel-mount.jpg" width="240" alt="USB-C female panel-mount socket boards"></a><br>
       <strong><a href="https://www.amazon.com/dp/B0F3WVBGCP">USB-C female panel-mount socket board</a></strong><br>
-      Becomes the finished power inlet. Its black plate bolts to the printed back first so the connector sits recessed and flush before the internal cable is soldered on.
+      Becomes the finished power inlet. Keep it loose while soldering the cable that has already been fed through the printed back, then bolt its black plate into place so the connector sits recessed and flush.
     </td>
   </tr>
   <tr>
@@ -84,7 +84,7 @@ The photos below are stored in this repository as visual references. The product
     <td width="50%" valign="top" align="center">
       <a href="https://www.amazon.com/dp/B0FGJ9FRGQ"><img src="Assembly%20Guide/images/parts/m3-fasteners.jpg" width="240" alt="M3 socket-head screw, nut, and washer assortment"></a><br>
       <strong><a href="https://www.amazon.com/dp/B0FGJ9FRGQ">M3 socket-head fasteners</a></strong><br>
-      Provide the main reusable enclosure hardware, together with the M3 heat-set inserts, nuts, and washers.
+      Four M3 × 25 mm screws close the main enclosure through the M3 heat-set inserts; the assortment also provides reusable nuts and washers.
     </td>
     <td width="50%" valign="top" align="center">
       <a href="https://www.amazon.com/dp/B07ZH9GJWP"><img src="Assembly%20Guide/images/parts/self-tapping-screws.jpg" width="240" alt="Small black self-tapping screw assortment"></a><br>
@@ -148,6 +148,14 @@ curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/Train%20UI%2
 
 Choose a train, then choose a station. The installer finishes the setup and reboots the Pi. Train UI starts automatically after the desktop loads.
 
+The Wi-Fi saved by Raspberry Pi Imager remains the preferred connection. If
+neither saved Wi-Fi nor Ethernet connects for 30 seconds, join the protected
+**TrainUI** hotspot with password **TRAINUI1**, then open `http://10.42.0.1`
+and enter the replacement Wi-Fi name and password. While this hotspot is
+active, the bottom System Health panel shows its name, password, and setup-page
+address. During a normal Wi-Fi connection, that panel never displays the
+network password.
+
 ## Change the train or station
 
 SSH into the Pi and run the same command again:
@@ -173,10 +181,11 @@ pkill -f timertest.py || true
 "$HOME/TrainUI/Train UI XL/run_trainui.sh" &
 ```
 
-Check the Wi-Fi watchdog:
+Check the automatic Wi-Fi setup service:
 
 ```bash
-systemctl status trainui-connectivity.timer
+systemctl status trainui-wifi-setup.service
+sudo journalctl -u trainui-wifi-setup.service --since today
 ```
 
 ## Troubleshooting
@@ -186,7 +195,7 @@ systemctl status trainui-connectivity.timer
 | SSH does not connect | Make sure SSH was enabled and try the Pi's IP address. |
 | Nothing opens after reboot | Make sure Raspberry Pi OS reaches the desktop, then check the log above. |
 | Arrivals are unavailable | Check the internet connection. Some trains do not run at every station all day. |
-| Wi-Fi keeps disconnecting | Make sure the original Pi Zero W is using a 2.4 GHz network. |
+| Wi-Fi keeps disconnecting | Make sure the original Pi Zero W is using a 2.4 GHz network. After 30 seconds offline, join **TrainUI** with password **TRAINUI1** and open `http://10.42.0.1`. |
 | Screen rotation is wrong | Change the rotation in `run_trainui.sh`, or rerun the installer after mounting the screen at 270 degrees. |
 | Screen still turns off | Disable any sleep timer or eco mode built into the monitor itself. |
 
