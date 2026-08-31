@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -192,6 +193,29 @@ class InstallerLayoutTests(unittest.TestCase):
             with self.subTest(filename=filename):
                 self.assertIn(filename, self.assembly_guide)
                 self.assertTrue((steps_directory / filename).is_file())
+
+    def test_documentation_images_are_not_links_to_the_same_file(self):
+        documentation_paths = (
+            REPOSITORY_ROOT / "README.md",
+            APP_ROOT / "README.md",
+            INSTALLER_README_PATH,
+            ASSEMBLY_GUIDE_PATH,
+            REPOSITORY_ROOT / "Train UI Mini" / "README.md",
+        )
+        markdown_image_link = re.compile(
+            r"\[!\[[^\]]*\]\(([^)]+)\)\]\(([^)]+)\)"
+        )
+        html_image_link = re.compile(
+            r'<a href="([^"]+)"><img src="([^"]+)"'
+        )
+
+        for path in documentation_paths:
+            content = path.read_text(encoding="utf-8")
+            with self.subTest(path=path.relative_to(REPOSITORY_ROOT)):
+                for image_source, link_target in markdown_image_link.findall(content):
+                    self.assertNotEqual(image_source, link_target)
+                for link_target, image_source in html_image_link.findall(content):
+                    self.assertNotEqual(image_source, link_target)
 
     def test_wifi_setup_fallback_is_installed_by_script_and_image(self):
         self.assertIn("trainui-wifi-setup init", self.installer)
