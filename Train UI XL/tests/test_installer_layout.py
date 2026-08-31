@@ -25,7 +25,7 @@ CAD_DIRECTORY = APP_ROOT / "CAD"
 FULL_ASSEMBLY_STEP_PATH = CAD_DIRECTORY / "case for screen.step"
 PRINT_ONLY_STEP_PATH = CAD_DIRECTORY / "Only 3DP files.step"
 FUSION_ARCHIVE_PATH = CAD_DIRECTORY / "case for screen.f3z"
-XL_PHOTO_PATH = REPOSITORY_ROOT / "assets" / "images" / "train-ui-xl.jpg"
+XL_PHOTO_PATH = REPOSITORY_ROOT / "assets" / "images" / "train-ui-xl.png"
 ASSEMBLY_STEP_ASSETS = {
     "01-faceplate-before-inserts.jpg",
     "02-faceplate-with-inserts.jpg",
@@ -190,7 +190,7 @@ class InstallerLayoutTests(unittest.TestCase):
             (REPOSITORY_ROOT / "assets" / "images" / "train-ui-xl-placeholder.svg").exists()
         )
         self.assertIn(
-            '<img src="assets/images/train-ui-xl.jpg" width="420"',
+            '<img src="assets/images/train-ui-xl.png" width="420"',
             self.repository_readme,
         )
         self.assertIn(
@@ -198,7 +198,7 @@ class InstallerLayoutTests(unittest.TestCase):
             self.repository_readme,
         )
         self.assertIn(
-            '<img src="../assets/images/train-ui-xl.jpg" width="420"',
+            '<img src="../assets/images/train-ui-xl.png" width="420"',
             self.readme,
         )
 
