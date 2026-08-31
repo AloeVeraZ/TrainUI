@@ -8,7 +8,7 @@
 [![Setup](https://img.shields.io/badge/Setup-Arduino_IDE-f59e0b?style=flat-square&logo=arduino&logoColor=white)](#setup)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](LICENSE)
 
-![Train UI Mini](assets/train-ui-mini-desk.png)
+<a href="#overview"><img src="assets/train-ui-mini-desk.png" width="420" alt="Train UI Mini e-paper display"></a>
 
 </div>
 

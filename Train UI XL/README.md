@@ -8,7 +8,7 @@
 [![Code](https://img.shields.io/badge/Code-Python-3776ab?style=flat-square&logo=python&logoColor=white)](timertest.py)
 [![Data](https://img.shields.io/badge/Data-MTA_Realtime-2563eb?style=flat-square)](https://www.mta.info/developers)
 
-<img src="../assets/images/train-ui-xl.png" width="420" alt="Train UI XL showing live departures">
+<a href="#overview"><img src="../assets/images/train-ui-xl.png" width="420" alt="Train UI XL showing live departures"></a>
 
 [Parts](#parts) • [CAD](#cad-files) • [Assembly](Assembly%20Guide/) • [Install](#install) • [Commands](#commands)
 

@@ -214,6 +214,7 @@ class InstallerLayoutTests(unittest.TestCase):
     def test_second_assembly_step_keeps_its_instructions_and_photos(self):
         self.assertIn("Step 2 — Prepare the middle plate", self.assembly_guide)
         self.assertIn("4 M2 × 4 mm heat-set threaded inserts", self.assembly_guide)
+        self.assertIn("4 M2 × 6 mm screws", self.assembly_guide)
         self.assertIn("back plate will not fit correctly", self.assembly_guide)
         steps_directory = ASSEMBLY_GUIDE_PATH.parent / "images" / "steps"
         for filename in ASSEMBLY_STEP_2_ASSETS:
@@ -238,13 +239,16 @@ class InstallerLayoutTests(unittest.TestCase):
         self.assertIn("4 M3 × 25 mm screws", self.assembly_guide)
         self.assertIn("approximately 90 degrees to the tabletop", self.assembly_guide)
         self.assertIn("no cable may cross an edge", self.assembly_guide)
+        self.assertIn("Phillips-head drywall screw", self.assembly_guide)
+        self.assertIn("head about 8 mm wide", self.assembly_guide)
+        self.assertIn("wall stud or a suitable drywall anchor", self.assembly_guide)
         steps_directory = ASSEMBLY_GUIDE_PATH.parent / "images" / "steps"
         for filename in ASSEMBLY_STEP_4_ASSETS:
             with self.subTest(filename=filename):
                 self.assertIn(filename, self.assembly_guide)
                 self.assertTrue((steps_directory / filename).is_file())
 
-    def test_documentation_images_are_not_links_to_the_same_file(self):
+    def test_documentation_images_only_link_to_useful_destinations(self):
         documentation_paths = (
             REPOSITORY_ROOT / "README.md",
             APP_ROOT / "README.md",
@@ -258,14 +262,26 @@ class InstallerLayoutTests(unittest.TestCase):
         html_image_link = re.compile(
             r'<a href="([^"]+)"><img src="([^"]+)"'
         )
+        image_suffixes = (".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp")
 
         for path in documentation_paths:
             content = path.read_text(encoding="utf-8")
             with self.subTest(path=path.relative_to(REPOSITORY_ROOT)):
                 for image_source, link_target in markdown_image_link.findall(content):
                     self.assertNotEqual(image_source, link_target)
+                    self.assertFalse(
+                        link_target.lower().split("#", 1)[0].endswith(image_suffixes)
+                    )
                 for link_target, image_source in html_image_link.findall(content):
                     self.assertNotEqual(image_source, link_target)
+                    self.assertFalse(
+                        link_target.lower().split("#", 1)[0].endswith(image_suffixes)
+                    )
+                for line in content.splitlines():
+                    if "<img " in line:
+                        self.assertIn('<a href="', line)
+                        self.assertIn("</a>", line)
+                    self.assertFalse(re.match(r"^\s*!\[", line))
 
     def test_wifi_setup_fallback_is_installed_by_script_and_image(self):
         self.assertIn("trainui-wifi-setup init", self.installer)

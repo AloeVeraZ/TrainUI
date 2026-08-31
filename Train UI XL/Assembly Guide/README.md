@@ -4,7 +4,7 @@
 
 ### Build the enclosure in four steps
 
-![Parts reference](images/parts-reference.jpg)
+<a href="../README.md#parts"><img src="images/parts-reference.jpg" width="760" alt="Train UI XL parts reference"></a>
 
 [Parts](../README.md#parts) • [Faceplate](#step-1--prepare-the-front-faceplate-and-install-the-screen) • [Pi](#step-2--prepare-the-middle-plate-and-mount-the-raspberry-pi-zero-w) • [Power](#step-3--build-and-install-the-usb-c-power-inlet) • [Close](#step-4--square-and-close-the-enclosure)
 
@@ -26,13 +26,13 @@ I designed the case as a front faceplate, middle plate, and back plate. Check th
 The empty corner holes look like this:
 
 <p align="center">
-  <img src="images/steps/01-faceplate-before-inserts.jpg" width="300" alt="Train UI XL front faceplate before installing the heat-set inserts">
+  <a href="#step-1--prepare-the-front-faceplate-and-install-the-screen"><img src="images/steps/01-faceplate-before-inserts.jpg" width="300" alt="Train UI XL front faceplate before installing the heat-set inserts"></a>
 </p>
 
 Heat one insert at a time. Press it straight in until flush, remove the tip without twisting, and let it cool. Repeat at all four corners.
 
 <p align="center">
-  <img src="images/steps/02-faceplate-with-inserts.jpg" width="760" alt="Train UI XL front faceplate with four M3 by 4 millimeter heat-set inserts installed">
+  <a href="#step-1--prepare-the-front-faceplate-and-install-the-screen"><img src="images/steps/02-faceplate-with-inserts.jpg" width="760" alt="Train UI XL front faceplate with four M3 by 4 millimeter heat-set inserts installed"></a>
 </p>
 
 ### 2. Seat the screen
@@ -40,30 +40,30 @@ Heat one insert at a time. Press it straight in until flush, remove the tip with
 Place the faceplate front-down on a soft surface. Lower the screen in from the rear with its viewing side toward the front. Keep pressure off the LCD, controller, and ribbon cable. The screen should sit flat inside the recessed edge.
 
 <p align="center">
-  <img src="images/steps/03-screen-seated-in-faceplate.jpg" width="760" alt="Rear view of the Train UI XL display seated in the front faceplate">
+  <a href="#step-1--prepare-the-front-faceplate-and-install-the-screen"><img src="images/steps/03-screen-seated-in-faceplate.jpg" width="760" alt="Rear view of the Train UI XL display seated in the front faceplate"></a>
 </p>
 
 ## Step 2 — Prepare the middle plate and mount the Raspberry Pi Zero W
 
-**Parts:** middle plate, 4 M2 × 4 mm heat-set threaded inserts, heat-set tip, Pi Zero W, and four matching M2 screws.
+**Parts:** middle plate, 4 M2 × 4 mm heat-set threaded inserts, heat-set tip, Pi Zero W, and 4 M2 × 6 mm screws.
 
 ### 1. Install the Pi inserts
 
 Orient the plate with the large opening at the upper left. Use the four small holes grouped at the bottom left—not the larger enclosure holes.
 
 <p align="center">
-  <img src="images/steps/04-middle-plate-before-inserts.jpg" width="760" alt="Train UI XL middle plate before installing the Raspberry Pi mounting inserts">
+  <a href="#step-2--prepare-the-middle-plate-and-mount-the-raspberry-pi-zero-w"><img src="images/steps/04-middle-plate-before-inserts.jpg" width="760" alt="Train UI XL middle plate before installing the Raspberry Pi mounting inserts"></a>
 </p>
 
 Press each insert straight in until flush and let it cool.
 
 <p align="center">
-  <img src="images/steps/05-middle-plate-with-pi-inserts.jpg" width="760" alt="Train UI XL middle plate with four M2 by 4 millimeter Raspberry Pi mounting inserts installed">
+  <a href="#step-2--prepare-the-middle-plate-and-mount-the-raspberry-pi-zero-w"><img src="images/steps/05-middle-plate-with-pi-inserts.jpg" width="760" alt="Train UI XL middle plate with four M2 by 4 millimeter Raspberry Pi mounting inserts installed"></a>
 </p>
 
 ### 2. Mount the Pi
 
-Start all four M2 screws, then tighten only until secure.
+Start all four M2 × 6 mm screws, then tighten only until secure.
 
 > [!IMPORTANT]
 > Match the photo exactly or the back plate will not fit correctly. With the display controller at the bottom, the Pi sits at the upper right. Its green underside faces out and its connector edge points down.
@@ -71,7 +71,7 @@ Start all four M2 screws, then tighten only until secure.
 Route the HDMI and power cables below the back-plate edge.
 
 <p align="center">
-  <img src="images/steps/06-pi-zero-w-mounted-and-wired.jpg" width="760" alt="Correct Raspberry Pi Zero W orientation and cable routing on the Train UI XL middle plate">
+  <a href="#step-2--prepare-the-middle-plate-and-mount-the-raspberry-pi-zero-w"><img src="images/steps/06-pi-zero-w-mounted-and-wired.jpg" width="760" alt="Correct Raspberry Pi Zero W orientation and cable routing on the Train UI XL middle plate"></a>
 </p>
 
 ## Step 3 — Build and install the USB-C power inlet
@@ -85,7 +85,7 @@ Cut off the unwanted end and keep the Micro-USB male plug. Strip the cut end. In
 Feed the cut end through the small back-plate opening **before soldering**. Keep the Micro-USB plug inside and the loose USB-C board outside. The molded plug cannot pass through this hole.
 
 <p align="center">
-  <img src="images/steps/07-power-cable-fed-before-soldering.jpg" width="430" alt="Micro-USB power cable fed through the Train UI XL back plate before soldering">
+  <a href="#step-3--build-and-install-the-usb-c-power-inlet"><img src="images/steps/07-power-cable-fed-before-soldering.jpg" width="430" alt="Micro-USB power cable fed through the Train UI XL back plate before soldering"></a>
 </p>
 
 ### 2. Solder and mount the inlet
@@ -97,7 +97,7 @@ Feed the cut end through the small back-plate opening **before soldering**. Keep
 Verify the wires with a multimeter, insulate the joints, and confirm `V` is not shorted to `G`. Then bolt the USB-C board into the back plate with the socket facing outside.
 
 <p align="center">
-  <img src="images/steps/08-usbc-power-board-soldered-and-mounted.jpg" width="760" alt="Red wire soldered to V and black wire soldered to G on the mounted USB-C power board">
+  <a href="#step-3--build-and-install-the-usb-c-power-inlet"><img src="images/steps/08-usbc-power-board-soldered-and-mounted.jpg" width="760" alt="Red wire soldered to V and black wire soldered to G on the mounted USB-C power board"></a>
 </p>
 
 ### 3. Connect Pi power
@@ -108,7 +108,7 @@ Verify the wires with a multimeter, insulate the joints, and confirm `V` is not 
 Keep the cable loop low and away from the case edges and screw holes.
 
 <p align="center">
-  <img src="images/steps/09-finished-internal-power-wiring.jpg" width="760" alt="Finished Train UI XL internal power wiring from the USB-C inlet to the Raspberry Pi Zero W power port">
+  <a href="#step-3--build-and-install-the-usb-c-power-inlet"><img src="images/steps/09-finished-internal-power-wiring.jpg" width="760" alt="Finished Train UI XL internal power wiring from the USB-C inlet to the Raspberry Pi Zero W power port"></a>
 </p>
 
 ## Step 4 — Square and close the enclosure
@@ -126,7 +126,13 @@ Stand the case on one side on a flat table, with its faces approximately 90 degr
 Start all four M3 × 25 mm screws a few turns. Tighten them gradually across opposite corners until the seams close. Do not overtighten the inserts.
 
 <p align="center">
-  <img src="images/steps/10-back-plate-final-assembly.jpg" width="760" alt="Finished rear view of the squared and bolted Train UI XL enclosure">
+  <a href="#step-4--square-and-close-the-enclosure"><img src="images/steps/10-back-plate-final-assembly.jpg" width="760" alt="Finished rear view of the squared and bolted Train UI XL enclosure"></a>
 </p>
 
-Check every seam once more. If no cable is trapped and the USB-C inlet is clear, the build is finished.
+### 3. Hang the finished display
+
+The teardrop-shaped opening in the back plate is a keyhole slot for wall mounting. It is designed around a standard Phillips-head drywall screw with a head about 8 mm wide.
+
+Fasten the screw into a wall stud or a suitable drywall anchor, leaving the head slightly proud of the wall. Pass the wide part of the keyhole over the screw head, then slide the display down into the narrow slot. Confirm the screw and anchor can support the complete display before letting go.
+
+Check every seam once more. If no cable is trapped, the USB-C inlet is clear, and the wall mount is secure, the build is finished.
