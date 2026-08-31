@@ -2,7 +2,8 @@
 set -Eeuo pipefail
 
 REPO_URL="https://github.com/AloeVeraZ/TrainUI.git"
-APP_DIR="${TRAINUI_APP_DIR:-$HOME/TrainUI}"
+REPO_DIR="${TRAINUI_REPO_DIR:-${TRAINUI_APP_DIR:-$HOME/TrainUI}}"
+APP_DIR="$REPO_DIR/Train UI XL"
 VENV_DIR="$APP_DIR/.venv"
 SOURCE_DIR="$APP_DIR"
 MAIN_FILE=""
@@ -12,6 +13,9 @@ LABWC_DIR="$HOME/.config/labwc"
 TRAINUI_CONFIG_DIR="$HOME/.config/trainui"
 TRAINUI_CONFIG_FILE="$TRAINUI_CONFIG_DIR/config.json"
 LOG_FILE="$APP_DIR/trainui.log"
+DEPENDENCY_STAMP="$VENV_DIR/.trainui-requirements.sha256"
+GTFS_WHEEL_URL="https://files.pythonhosted.org/packages/b3/67/1f030547f94716b3259d99ad93467a6608703942bc62f35e43b1bb8bc2e9/gtfs_realtime_bindings-1.0.0-py3-none-any.whl"
+GTFS_WHEEL_SHA256="0a9b57a103a5401895b65b6051344003b5fb213523ea4383596be017e6d67e2d"
 
 say() {
     printf '\n\033[1;36m[TrainUI]\033[0m %s\n' "$*"
@@ -53,6 +57,20 @@ apt_get() {
     done
 }
 
+apt_lists_refreshed=false
+
+refresh_apt_lists() {
+    if [ "$apt_lists_refreshed" = false ]; then
+        apt_get update
+        apt_lists_refreshed=true
+    fi
+}
+
+package_is_installed() {
+    dpkg-query -W -f='${Status}\n' "$1" 2>/dev/null |
+        grep -q '^install ok installed$'
+}
+
 fail() {
     printf '\n\033[1;31m[TrainUI ERROR]\033[0m %s\n' "$*" >&2
     exit 1
@@ -68,30 +86,45 @@ if ! command -v sudo >/dev/null 2>&1; then
     fail "sudo is required. Use the normal Raspberry Pi OS user created in Raspberry Pi Imager."
 fi
 
-say "Installing Raspberry Pi and Python dependencies..."
-
-apt_get update
-
-apt_get install -y \
-    ca-certificates \
-    curl \
-    git \
-    python3 \
-    python3-pip \
-    python3-tk \
-    python3-venv \
-    python3-pil \
-    python3-pil.imagetk \
-    fonts-dejavu-core \
-    iw \
-    rfkill \
-    wlr-randr \
+SYSTEM_PACKAGES=(
+    ca-certificates
+    curl
+    git
+    python3
+    python3-pip
+    python3-tk
+    python3-venv
+    python3-pil
+    python3-pil.imagetk
+    python3-protobuf
+    python3-requests
+    fonts-dejavu-core
+    iw
+    rfkill
+    wlr-randr
     x11-xserver-utils
+)
+
+missing_packages=()
+for package in "${SYSTEM_PACKAGES[@]}"; do
+    if ! package_is_installed "$package"; then
+        missing_packages+=("$package")
+    fi
+done
+
+if [ "${#missing_packages[@]}" -gt 0 ]; then
+    say "Installing ${#missing_packages[@]} missing Raspberry Pi dependencies..."
+    refresh_apt_lists
+    apt_get install -y "${missing_packages[@]}"
+else
+    say "Raspberry Pi dependencies are already installed; skipping APT."
+fi
 
 # Install a graphical desktop when Raspberry Pi OS Lite is being used.
 if ! command -v labwc >/dev/null 2>&1 && \
    ! command -v startlxde-pi >/dev/null 2>&1; then
     say "No graphical desktop detected. Installing one..."
+    refresh_apt_lists
 
     if apt-cache show rpd-wayland-core >/dev/null 2>&1; then
         apt_get install -y \
@@ -116,21 +149,22 @@ say "Downloading TrainUI from GitHub..."
 install_fresh_copy() {
     local reason="${1:-An existing TrainUI folder was found.}"
     local install_stamp="$(date +%Y%m%d-%H%M%S).$$"
-    local backup_dir="${APP_DIR}.backup.${install_stamp}"
-    local fresh_dir="${APP_DIR}.installing.${install_stamp}"
+    local backup_dir="${REPO_DIR}.backup.${install_stamp}"
+    local fresh_dir="${REPO_DIR}.installing.${install_stamp}"
 
     say "$reason"
     # Clone before moving the working installation. If GitHub is unavailable,
     # the currently installed copy remains exactly where it was.
     git clone --branch main --single-branch "$REPO_URL" "$fresh_dir"
-    mv "$APP_DIR" "$backup_dir"
-    mv "$fresh_dir" "$APP_DIR"
+    mv "$REPO_DIR" "$backup_dir"
+    mv "$fresh_dir" "$REPO_DIR"
     say "The previous installation was preserved at $backup_dir"
 }
 
 if [ -d "$APP_DIR/.git" ]; then
-    # Ignore installer-owned runtime files even when upgrading a checkout from
-    # before the project-family root .gitignore existed.
+    # Older installers generated run_trainui.sh without adding it to .gitignore.
+    # Ignore installer-owned runtime files (run_trainui.sh, logs, locks, venv)
+    # so existing checkouts can be upgraded.
     checkout_changes=""
     checkout_is_valid=true
     if checkout_changes="$(git -C "$APP_DIR" status --porcelain --untracked-files=all)"; then
@@ -144,23 +178,23 @@ if [ -d "$APP_DIR/.git" ]; then
 
     if [ "$checkout_is_valid" != true ]; then
         install_fresh_copy "The existing Git checkout is damaged; reinstalling it."
-    elif ! git -C "$APP_DIR" fetch --prune origin main; then
+    elif ! git -C "$REPO_DIR" fetch --prune origin main; then
         install_fresh_copy "The existing Git checkout could not be updated; reinstalling it."
     elif [ -n "$checkout_changes" ]; then
         install_fresh_copy "Local changes were found; reinstalling a clean copy."
-    elif ! git -C "$APP_DIR" show-ref --verify --quiet refs/heads/main; then
+    elif ! git -C "$REPO_DIR" show-ref --verify --quiet refs/heads/main; then
         install_fresh_copy "The existing checkout has no main branch; reinstalling it."
-    elif ! git -C "$APP_DIR" merge-base --is-ancestor main origin/main; then
+    elif ! git -C "$REPO_DIR" merge-base --is-ancestor main origin/main; then
         install_fresh_copy "The existing main branch has local commits; reinstalling a clean copy."
     else
-        git -C "$APP_DIR" checkout -f main
-        git -C "$APP_DIR" reset --hard origin/main
+        git -C "$REPO_DIR" checkout -f main
+        git -C "$REPO_DIR" reset --hard origin/main
     fi
 else
-    if [ -e "$APP_DIR" ]; then
+    if [ -e "$REPO_DIR" ]; then
         install_fresh_copy "A non-Git TrainUI folder was found; reinstalling a clean copy."
     else
-        git clone --branch main --single-branch "$REPO_URL" "$APP_DIR"
+        git clone --branch main --single-branch "$REPO_URL" "$REPO_DIR"
     fi
 fi
 
@@ -253,16 +287,66 @@ else
     say "NetworkManager does not control a Wi-Fi adapter; keeping the legacy reconnect watchdog."
 fi
 
-say "Creating the TrainUI Python environment..."
+say "Preparing the TrainUI Python environment..."
 
-python3 -m venv --system-site-packages "$VENV_DIR"
+if [ ! -x "$VENV_DIR/bin/python" ]; then
+    python3 -m venv --system-site-packages "$VENV_DIR"
 
-"$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
+    "$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
 
-if [ -f "$SOURCE_DIR/requirements.txt" ]; then
-    "$VENV_DIR/bin/python" -m pip install -r "$SOURCE_DIR/requirements.txt"
+    if [ -f "$SOURCE_DIR/requirements.txt" ]; then
+        "$VENV_DIR/bin/python" -m pip install -r "$SOURCE_DIR/requirements.txt"
+    fi
 else
-    "$VENV_DIR/bin/python" -m pip install requests protobuf gtfs-realtime-bindings pillow
+    say "Reusing the existing Python environment."
+fi
+else
+    say "Reusing the existing Python environment."
+fi
+
+python_imports_ok() {
+    "$VENV_DIR/bin/python" -c '
+import requests
+from google.transit import gtfs_realtime_pb2
+from PIL import Image, ImageTk
+' >/dev/null 2>&1
+}
+
+requirements_hash="$(sha256sum "$APP_DIR/requirements.txt" | awk '{print $1}')"
+dependencies_are_current=false
+
+if [ -f "$DEPENDENCY_STAMP" ] && \
+   [ "$(cat "$DEPENDENCY_STAMP")" = "$requirements_hash" ] && \
+   python_imports_ok; then
+    dependencies_are_current=true
+fi
+
+if [ "$dependencies_are_current" = true ]; then
+    say "Python dependencies are already installed; skipping downloads."
+else
+    say "Installing the one Python package not provided by Raspberry Pi OS..."
+    wheel_dir="$(mktemp -d)"
+    wheel_file="$wheel_dir/gtfs_realtime_bindings-1.0.0-py3-none-any.whl"
+
+    curl --fail --silent --show-error --location \
+        --connect-timeout 15 \
+        --max-time 60 \
+        --retry 1 \
+        "$GTFS_WHEEL_URL" \
+        --output "$wheel_file"
+
+    printf '%s  %s\n' "$GTFS_WHEEL_SHA256" "$wheel_file" | sha256sum --check --status
+
+    env \
+        PIP_CONFIG_FILE=/dev/null \
+        PIP_DISABLE_PIP_VERSION_CHECK=1 \
+        PIP_EXTRA_INDEX_URL= \
+        "$VENV_DIR/bin/python" -m pip install \
+            --no-index \
+            --no-deps \
+            "$wheel_file"
+
+    rm -rf "$wheel_dir"
 fi
 
 say "Checking timertest.py and its libraries..."
@@ -277,6 +361,8 @@ from PIL import Image, ImageTk
 print("All TrainUI imports passed.")
 '
 
+printf '%s\n' "$requirements_hash" > "$DEPENDENCY_STAMP"
+
 say "Creating the persistent 270-degree launcher..."
 
 cat > "$RUNNER" <<EOF
@@ -290,6 +376,14 @@ LOG_FILE="$LOG_FILE"
 CONFIG_FILE="$TRAINUI_CONFIG_FILE"
 
 export TRAINUI_CONFIG="\$CONFIG_FILE"
+export PYTHONUNBUFFERED=1
+
+# This lives in tmpfs, not on the microSD card. timertest.py refreshes it from
+# the same callback that updates the visible clock.
+HEARTBEAT_FILE="\${XDG_RUNTIME_DIR:-/tmp}/trainui-\${UID}.heartbeat"
+HEARTBEAT_TIMEOUT_SECONDS=45
+MAX_RUNTIME_SECONDS=86400
+export TRAINUI_HEARTBEAT_FILE="\$HEARTBEAT_FILE"
 
 mkdir -p "\$APP_DIR"
 
@@ -390,9 +484,72 @@ wait_for_mta
 
 keep_display_awake &
 display_watchdog_pid=\$!
-trap 'kill "\$display_watchdog_pid" 2>/dev/null || true' EXIT INT TERM
+app_pid=""
 
-"\$PYTHON" "\$MAIN_FILE" >> "\$LOG_FILE" 2>&1
+stop_app() {
+    [ -n "\$app_pid" ] || return 0
+    kill "\$app_pid" 2>/dev/null || return 0
+
+    for _ in \$(seq 1 5); do
+        kill -0 "\$app_pid" 2>/dev/null || return 0
+        sleep 1
+    done
+
+    kill -KILL "\$app_pid" 2>/dev/null || true
+}
+
+cleanup() {
+    stop_app
+    kill "\$display_watchdog_pid" 2>/dev/null || true
+    rm -f "\$HEARTBEAT_FILE"
+}
+trap cleanup EXIT
+trap 'exit 0' INT TERM
+
+# Keep the desktop session and display environment alive while supervising the
+# Python process. A stopped clock, crash, or once-daily maintenance recycle all
+# recover here without rebooting or waiting for another login.
+while true; do
+    rm -f "\$HEARTBEAT_FILE"
+    app_started_at="\$(date +%s)"
+    restart_reason="TrainUI exited"
+
+    "\$PYTHON" "\$MAIN_FILE" >> "\$LOG_FILE" 2>&1 &
+    app_pid=\$!
+    echo "TrainUI process \$app_pid started." >> "\$LOG_FILE"
+
+    while kill -0 "\$app_pid" 2>/dev/null; do
+        sleep 10
+        now="\$(date +%s)"
+        heartbeat_at="\$app_started_at"
+        if [ -e "\$HEARTBEAT_FILE" ]; then
+            heartbeat_at="\$(stat -c %Y "\$HEARTBEAT_FILE" 2>/dev/null || echo "\$app_started_at")"
+        fi
+
+        if [ "\$((now - heartbeat_at))" -gt "\$HEARTBEAT_TIMEOUT_SECONDS" ]; then
+            restart_reason="Clock heartbeat was stale for more than \${HEARTBEAT_TIMEOUT_SECONDS}s"
+            stop_app
+            break
+        fi
+
+        if [ "\$((now - app_started_at))" -ge "\$MAX_RUNTIME_SECONDS" ]; then
+            restart_reason="Daily preventive restart"
+            stop_app
+            break
+        fi
+    done
+
+    if wait "\$app_pid"; then
+        exit_code=0
+    else
+        exit_code=\$?
+    fi
+    printf '%s (exit %s); restarting in 3 seconds.\n' \
+        "\$restart_reason" "\$exit_code" >> "\$LOG_FILE"
+    app_pid=""
+    rm -f "\$HEARTBEAT_FILE"
+    sleep 3
+done
 EOF
 
 chmod +x "$RUNNER"
@@ -407,7 +564,7 @@ Type=Application
 Version=1.0
 Name=TrainUI
 Comment=NYC D train departure display
-Exec=$RUNNER
+Exec="$RUNNER"
 Path=$APP_DIR
 Terminal=false
 StartupNotify=false
@@ -420,7 +577,7 @@ sed -i '/# TRAINUI START/,/# TRAINUI END/d' "$LABWC_DIR/autostart"
 
 cat >> "$LABWC_DIR/autostart" <<EOF
 # TRAINUI START
-$RUNNER &
+"$RUNNER" &
 # TRAINUI END
 EOF
 
@@ -455,6 +612,26 @@ sudo systemctl mask \
     hybrid-sleep.target \
     2>/dev/null || true
 
+# Let the Raspberry Pi hardware watchdog recover from a full operating-system
+# hang. The application heartbeat above handles the more common GUI-only hang.
+if [ ! -f "$APP_DIR/installer/systemd/90-trainui-runtime-watchdog.conf" ]; then
+    fail "The runtime watchdog configuration was not found in the GitHub repository."
+fi
+sudo install -d -m 0755 /etc/systemd/system.conf.d
+sudo install -m 0644 \
+    "$APP_DIR/installer/systemd/90-trainui-runtime-watchdog.conf" \
+    /etc/systemd/system.conf.d/90-trainui-runtime-watchdog.conf
+
+BOOT_CONFIG_FILE="/boot/firmware/config.txt"
+if [ ! -f "$BOOT_CONFIG_FILE" ]; then
+    BOOT_CONFIG_FILE="/boot/config.txt"
+fi
+if [ -f "$BOOT_CONFIG_FILE" ] && \
+   ! grep -qE '^[[:space:]]*dtparam=watchdog=on([[:space:]]*(#.*)?)?$' "$BOOT_CONFIG_FILE"; then
+    printf '\n# TrainUI automatic recovery from a full system hang\ndtparam=watchdog=on\n' | \
+        sudo tee -a "$BOOT_CONFIG_FILE" >/dev/null
+fi
+
 CMDLINE_FILE="/boot/firmware/cmdline.txt"
 if [ ! -f "$CMDLINE_FILE" ]; then
     CMDLINE_FILE="/boot/cmdline.txt"
@@ -471,6 +648,9 @@ fi
 say "Installation complete."
 echo "The Pi will reboot in five seconds."
 echo "TrainUI will start automatically at 270 degrees."
+echo "Network-agnostic Wi-Fi reliability checks run every 30 seconds."
+echo "A frozen TrainUI process restarts automatically within about one minute."
+echo "The application is also recycled once daily and the Pi hardware watchdog is enabled."
 if [ "$WIFI_SETUP_ENABLED" = true ]; then
     echo "Wi-Fi fallback: join TrainUI with password TRAINUI1 after 30 seconds offline."
     echo "Wi-Fi setup page: http://10.42.0.1"

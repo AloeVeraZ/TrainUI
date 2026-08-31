@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=TrainUI
+Comment=NYC train departure display
+Exec=/opt/trainui/bin/run-trainui
+TryExec=/opt/trainui/bin/run-trainui
+Terminal=false
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+
