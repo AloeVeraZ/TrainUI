@@ -23,7 +23,7 @@ Both versions connect directly to the MTA's public realtime feeds. Your train an
 
 | Train UI XL | Train UI Mini |
 | --- | --- |
-| [![Train UI XL](assets/images/train-ui-xl.jpg)](Train%20UI%20XL/) | [![Train UI Mini](assets/images/train-ui-mini.jpg)](Train%20UI%20Mini/) |
+| <a href="Train%20UI%20XL/"><img src="assets/images/train-ui-xl.jpg" width="420" alt="Train UI XL showing live departures"></a> | <a href="Train%20UI%20Mini/"><img src="assets/images/train-ui-mini.jpg" width="420" alt="Train UI Mini e-paper display"></a> |
 | Raspberry Pi Zero W and a 10.1-inch color screen | ESP32-S3 and a 2.13-inch e-paper screen |
 | Full dashboard, weather, and Pi health | Smaller, cheaper, and simpler |
 | [Build the XL](Train%20UI%20XL/) | [Build the Mini](Train%20UI%20Mini/) |

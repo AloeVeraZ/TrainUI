@@ -189,8 +189,18 @@ class InstallerLayoutTests(unittest.TestCase):
         self.assertFalse(
             (REPOSITORY_ROOT / "assets" / "images" / "train-ui-xl-placeholder.svg").exists()
         )
-        self.assertIn("assets/images/train-ui-xl.jpg", self.repository_readme)
-        self.assertIn("../assets/images/train-ui-xl.jpg", self.readme)
+        self.assertIn(
+            '<img src="assets/images/train-ui-xl.jpg" width="420"',
+            self.repository_readme,
+        )
+        self.assertIn(
+            '<img src="assets/images/train-ui-mini.jpg" width="420"',
+            self.repository_readme,
+        )
+        self.assertIn(
+            '<img src="../assets/images/train-ui-xl.jpg" width="420"',
+            self.readme,
+        )
 
     def test_first_assembly_step_keeps_its_instructions_and_photos(self):
         self.assertIn("Step 1 — Prepare the front faceplate", self.assembly_guide)
