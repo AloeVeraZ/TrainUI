@@ -1,10 +1,12 @@
 import re
 import unittest
+import zipfile
 from pathlib import Path
 
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = APP_ROOT.parent
+REPOSITORY_README_PATH = REPOSITORY_ROOT / "README.md"
 INSTALLER_PATH = APP_ROOT / "installer" / "install.sh"
 README_PATH = APP_ROOT / "README.md"
 INSTALLER_README_PATH = APP_ROOT / "installer" / "README.md"
@@ -19,6 +21,11 @@ RUNTIME_WATCHDOG_PATH = (
     APP_ROOT / "installer" / "systemd" / "90-trainui-runtime-watchdog.conf"
 )
 ASSEMBLY_GUIDE_PATH = APP_ROOT / "Assembly Guide" / "README.md"
+CAD_DIRECTORY = APP_ROOT / "CAD"
+FULL_ASSEMBLY_STEP_PATH = CAD_DIRECTORY / "case for screen.step"
+PRINT_ONLY_STEP_PATH = CAD_DIRECTORY / "Only 3DP files.step"
+FUSION_ARCHIVE_PATH = CAD_DIRECTORY / "case for screen.f3z"
+XL_PHOTO_PATH = REPOSITORY_ROOT / "assets" / "images" / "train-ui-xl.jpg"
 ASSEMBLY_STEP_ASSETS = {
     "01-faceplate-before-inserts.jpg",
     "02-faceplate-with-inserts.jpg",
@@ -57,6 +64,7 @@ PUBLIC_INSTALL_COMMAND = (
 class InstallerLayoutTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls.repository_readme = REPOSITORY_README_PATH.read_text(encoding="utf-8")
         cls.installer = INSTALLER_PATH.read_text(encoding="utf-8")
         cls.readme = README_PATH.read_text(encoding="utf-8")
         cls.installer_readme = INSTALLER_README_PATH.read_text(encoding="utf-8")
@@ -151,6 +159,38 @@ class InstallerLayoutTests(unittest.TestCase):
                 self.assertIn(f"https://www.amazon.com/dp/{asin}", self.readme)
                 self.assertIn(filename, self.readme)
                 self.assertTrue((parts_directory / filename).is_file())
+
+    def test_parts_grid_uses_three_columns_with_two_centered_cards(self):
+        self.assertEqual(self.readme.count('<td width="33%"'), 6)
+        self.assertIn('<td colspan="3" align="center">', self.readme)
+        self.assertIn('<table width="67%">', self.readme)
+
+    def test_current_cad_files_are_linked_and_identify_print_only_export(self):
+        for path in (FULL_ASSEMBLY_STEP_PATH, PRINT_ONLY_STEP_PATH):
+            with self.subTest(path=path.name):
+                self.assertTrue(path.is_file())
+                with path.open("rb") as model:
+                    self.assertEqual(model.readline().strip(), b"ISO-10303-21;")
+
+        self.assertTrue(FUSION_ARCHIVE_PATH.is_file())
+        self.assertTrue(zipfile.is_zipfile(FUSION_ARCHIVE_PATH))
+        for filename in (
+            FULL_ASSEMBLY_STEP_PATH.name,
+            PRINT_ONLY_STEP_PATH.name,
+            FUSION_ARCHIVE_PATH.name,
+        ):
+            self.assertIn(filename, self.repository_readme)
+            self.assertIn(filename, self.readme)
+        self.assertIn("Only the parts that need to be 3D printed", self.repository_readme)
+        self.assertIn("3D-printed parts only", self.readme)
+
+    def test_real_xl_photo_replaces_generated_placeholder(self):
+        self.assertTrue(XL_PHOTO_PATH.is_file())
+        self.assertFalse(
+            (REPOSITORY_ROOT / "assets" / "images" / "train-ui-xl-placeholder.svg").exists()
+        )
+        self.assertIn("assets/images/train-ui-xl.jpg", self.repository_readme)
+        self.assertIn("../assets/images/train-ui-xl.jpg", self.readme)
 
     def test_first_assembly_step_keeps_its_instructions_and_photos(self):
         self.assertIn("Step 1 — Prepare the front faceplate", self.assembly_guide)

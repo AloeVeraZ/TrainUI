@@ -8,9 +8,9 @@
 [![Code](https://img.shields.io/badge/Code-Python-3776ab?style=flat-square&logo=python&logoColor=white)](timertest.py)
 [![Data](https://img.shields.io/badge/Data-MTA_Realtime-2563eb?style=flat-square)](https://www.mta.info/developers)
 
-![Train UI XL](../assets/images/train-ui-xl-placeholder.svg)
+![Train UI XL showing live departures](../assets/images/train-ui-xl.jpg)
 
-[Parts](#parts) • [Assembly](Assembly%20Guide/) • [Install](#install) • [Commands](#commands)
+[Parts](#parts) • [CAD](#cad-files) • [Assembly](Assembly%20Guide/) • [Install](#install) • [Commands](#commands)
 
 </div>
 
@@ -38,56 +38,70 @@ This is the bill of materials for the XL build.
 
 <table>
   <tr>
-    <td width="50%" valign="top" align="center">
+    <td width="33%" valign="top" align="center">
       <a href="https://www.amazon.com/dp/B0G5YZJLVZ"><img src="Assembly%20Guide/images/parts/usb-c-to-micro-usb-adapter.jpg" width="240" alt="USB-C female to Micro-USB male adapter cable"></a><br>
       <strong><a href="https://www.amazon.com/dp/B0G5YZJLVZ">USB-C to Micro-USB adapter lead</a></strong><br>
       Becomes the internal Pi power lead.
     </td>
-    <td width="50%" valign="top" align="center">
+    <td width="33%" valign="top" align="center">
       <a href="https://www.amazon.com/dp/B0CNGV7FQJ"><img src="Assembly%20Guide/images/parts/angled-mini-hdmi-cable.jpg" width="240" alt="Angled HDMI to mini-HDMI cable"></a><br>
       <strong><a href="https://www.amazon.com/dp/B0CNGV7FQJ">90-degree HDMI to mini-HDMI cable</a></strong><br>
       Connects the Pi to the screen.
     </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top" align="center">
+    <td width="33%" valign="top" align="center">
       <a href="https://www.amazon.com/dp/B0D5V3TZLB"><img src="Assembly%20Guide/images/parts/heat-set-inserts.jpg" width="240" alt="M2 through M5 heat-set insert kit"></a><br>
       <strong><a href="https://www.amazon.com/dp/B0D5V3TZLB">M2–M5 heat-set inserts</a></strong><br>
       Adds metal threads to the printed parts.
     </td>
-    <td width="50%" valign="top" align="center">
+  </tr>
+  <tr>
+    <td width="33%" valign="top" align="center">
       <a href="https://www.amazon.com/dp/B0F3WVBGCP"><img src="Assembly%20Guide/images/parts/usb-c-panel-mount.jpg" width="240" alt="USB-C female panel-mount socket boards"></a><br>
       <strong><a href="https://www.amazon.com/dp/B0F3WVBGCP">USB-C panel-mount socket</a></strong><br>
       Becomes the outside power inlet.
     </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top" align="center">
+    <td width="33%" valign="top" align="center">
       <a href="https://www.amazon.com/dp/B0F87W7P59"><img src="Assembly%20Guide/images/parts/micro-usb-cable.jpg" width="240" alt="Short 90-degree Micro-USB male-to-male cable"></a><br>
       <strong><a href="https://www.amazon.com/dp/B0F87W7P59">Short 90-degree Micro-USB cable</a></strong><br>
       Keeps the internal power run compact.
     </td>
-    <td width="50%" valign="top" align="center">
+    <td width="33%" valign="top" align="center">
       <a href="https://www.amazon.com/dp/B0FF4TDYKZ"><img src="Assembly%20Guide/images/parts/countersunk-fasteners.jpg" width="240" alt="Countersunk M2, M2.5, and M3 fastener assortment"></a><br>
       <strong><a href="https://www.amazon.com/dp/B0FF4TDYKZ">Countersunk fasteners</a></strong><br>
       Holds low-profile parts flush.
     </td>
   </tr>
   <tr>
-    <td width="50%" valign="top" align="center">
-      <a href="https://www.amazon.com/dp/B0FGJ9FRGQ"><img src="Assembly%20Guide/images/parts/m3-fasteners.jpg" width="240" alt="M3 socket-head screw, nut, and washer assortment"></a><br>
-      <strong><a href="https://www.amazon.com/dp/B0FGJ9FRGQ">M3 socket-head fasteners</a></strong><br>
-      Use four M3 × 25 mm screws to close the case.
-    </td>
-    <td width="50%" valign="top" align="center">
-      <a href="https://www.amazon.com/dp/B07ZH9GJWP"><img src="Assembly%20Guide/images/parts/self-tapping-screws.jpg" width="240" alt="Small black self-tapping screw assortment"></a><br>
-      <strong><a href="https://www.amazon.com/dp/B07ZH9GJWP">Small self-tapping screws</a></strong><br>
-      Secures light internal parts.
+    <td colspan="3" align="center">
+      <table width="67%">
+        <tr>
+          <td width="50%" valign="top" align="center">
+            <a href="https://www.amazon.com/dp/B0FGJ9FRGQ"><img src="Assembly%20Guide/images/parts/m3-fasteners.jpg" width="240" alt="M3 socket-head screw, nut, and washer assortment"></a><br>
+            <strong><a href="https://www.amazon.com/dp/B0FGJ9FRGQ">M3 socket-head fasteners</a></strong><br>
+            Use four M3 × 25 mm screws to close the case.
+          </td>
+          <td width="50%" valign="top" align="center">
+            <a href="https://www.amazon.com/dp/B07ZH9GJWP"><img src="Assembly%20Guide/images/parts/self-tapping-screws.jpg" width="240" alt="Small black self-tapping screw assortment"></a><br>
+            <strong><a href="https://www.amazon.com/dp/B07ZH9GJWP">Small self-tapping screws</a></strong><br>
+            Secures light internal parts.
+          </td>
+        </tr>
+      </table>
     </td>
   </tr>
 </table>
 
 **Tools:** soldering iron, wire cutters, wire strippers, multimeter, heat-shrink, heat-set tip, and matching hand tools.
+
+## CAD files
+
+| File | Use |
+| --- | --- |
+| [case for screen.step](CAD/case%20for%20screen.step) | Complete STEP assembly |
+| [Only 3DP files.step](CAD/Only%203DP%20files.step) | **3D-printed parts only** |
+| [case for screen.f3z](CAD/case%20for%20screen.f3z) | Editable Fusion 360 archive |
+
+If you only want to slice or print the enclosure, download **Only 3DP files.step**. The full STEP and Fusion archive also include reference assembly content.
 
 ## Assembly
 
