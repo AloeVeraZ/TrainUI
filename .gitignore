@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+.venv/
+trainui.log
+.trainui.lock
+run_trainui.sh

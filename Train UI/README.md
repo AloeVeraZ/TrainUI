@@ -86,6 +86,20 @@ Configure these items in Raspberry Pi Imager:
 
 The hostname, username, password, Wi-Fi name, IP address, locale, timezone, and storage brand do not need to match the reference build. SSH and internet access are the important requirements. The Pi Zero W only supports 2.4 GHz Wi-Fi, so its saved network must offer a compatible 2.4 GHz connection.
 
+The Imager Wi-Fi remains TrainUI's preferred connection. After installation,
+if no saved Wi-Fi or Ethernet connection succeeds for 30 seconds, the Pi opens
+its own protected setup network:
+
+1. Join **TrainUI** from a phone or computer.
+2. Enter password **TRAINUI1**.
+3. Open `http://10.42.0.1`.
+4. Enter the new Wi-Fi name (SSID) and password, then choose **Save and connect**.
+
+The TrainUI screen also shows the setup network, password, and address while
+the fallback is active. A successful replacement is saved in NetworkManager
+and becomes the preferred connection on later boots. An incorrect password
+causes the setup network to return so the form can be tried again.
+
 Attach the HDMI display before the first TrainUI boot. The main installation rotates the active output 270°.
 
 ## One-command installation
@@ -145,7 +159,7 @@ The installer:
 5. Validates the Python source and imports.
 6. Creates `~/TrainUI/run_trainui.sh` to rotate the display and launch TrainUI.
 7. Enables automatic startup for current Wayland/labwc and older X11 Raspberry Pi OS desktops.
-8. Applies network-agnostic Wi-Fi reliability settings without rewriting saved SSIDs or passwords.
+8. Preserves the Imager-created Wi-Fi, retries saved connections, and enables a protected web setup fallback after 30 seconds offline.
 9. Prevents desktop, console, and system sleep or blanking.
 10. Enables graphical auto-login and reboots the Pi.
 
@@ -162,10 +176,12 @@ No MTA or weather API key is required.
 TrainUI is configured as a dedicated kiosk:
 
 - Wi-Fi power saving is disabled globally when NetworkManager is present and at the interface level when supported.
-- A lightweight timer checks wireless connectivity every 30 seconds.
-- The watchdog discovers interfaces automatically and reuses the connection already saved by Raspberry Pi OS.
-- The installer never embeds or rewrites an SSID or Wi-Fi password.
-- Ethernet-only systems are left alone.
+- The active Raspberry Pi Imager Wi-Fi is captured as the preferred profile without changing its SSID or password.
+- Saved client connections get a 30-second connection window at boot and after a disconnect.
+- If Wi-Fi remains unavailable, the Pi creates the WPA2-protected **TrainUI** setup network at `http://10.42.0.1`.
+- The local setup page accepts a replacement Wi-Fi name and password. NetworkManager stores that profile and reconnects to it automatically on later boots.
+- The hotspot profile has autoconnect disabled, so every reboot tries normal saved Wi-Fi first.
+- Ethernet connections suppress the fallback hotspot, and older non-NetworkManager installations keep the legacy reconnect watchdog.
 - Desktop blanking, console blanking, X11 DPMS, suspend, and hibernation are disabled.
 - The launcher keeps the active Wayland or X11 output awake while TrainUI runs.
 - TrainUI keeps retrying when MTA, weather, or internet service is temporarily unavailable.
@@ -187,17 +203,17 @@ pkill -f timertest.py || true
 ~/TrainUI/run_trainui.sh &
 ```
 
-Check the connectivity timer:
+Check the Wi-Fi fallback service:
 
 ```bash
-systemctl status trainui-connectivity.timer
-sudo journalctl -u trainui-connectivity.service --since today
+systemctl status trainui-wifi-setup.service
+sudo journalctl -u trainui-wifi-setup.service --since today
 ```
 
 Run the route/station selector directly:
 
 ```bash
-python3 ~/TrainUI/installer/configure.py --config ~/.config/trainui/config.json
+python3 ~/TrainUI/Train\ UI/installer/configure.py --config ~/.config/trainui/config.json
 sudo reboot
 ```
 
@@ -227,14 +243,17 @@ Check internet access and the runtime log. Some routes only operate during certa
 
 ### Wi-Fi repeatedly disconnects
 
-Check the signal and saved Raspberry Pi OS connection:
+Check the signal, saved Raspberry Pi OS connection, and fallback service:
 
 ```bash
 nmcli device wifi list
-systemctl status trainui-connectivity.timer
+systemctl status trainui-wifi-setup.service
 ```
 
 For the original Pi Zero W, verify that the network offers 2.4 GHz Wi-Fi.
+If no saved network connects, wait 30 seconds, join **TrainUI** with password
+**TRAINUI1**, and open `http://10.42.0.1`. The form supports normal WPA/WPA2
+personal networks and open networks; the Pi Zero W cannot use 5 GHz Wi-Fi.
 
 ### The screen is rotated incorrectly
 
@@ -268,14 +287,17 @@ TrainUI/
 ├── installer/
 │   ├── systemd/
 │   │   ├── trainui-connectivity.service
-│   │   └── trainui-connectivity.timer
+│   │   ├── trainui-connectivity.timer
+│   │   └── trainui-wifi-setup.service
 │   ├── build_subway_catalog.py    # Rebuild catalog from official MTA data
 │   ├── configure.py               # Interactive train/station selector
-│   ├── connectivity-watchdog.sh
+│   ├── connectivity-watchdog.sh   # Legacy non-NetworkManager fallback
 │   ├── install.sh                 # Complete Raspberry Pi setup
-│   └── subway_catalog.json        # Generated subway/SIR route and station catalog
+│   ├── subway_catalog.json        # Generated subway/SIR route and station catalog
+│   └── wifi_setup.py              # 30-second failover hotspot and local web form
 ├── tests/
 │   ├── test_catalog.py
+│   ├── test_wifi_setup.py
 │   └── validate_live_feeds.py
 ├── requirements.txt
 ├── timertest.py

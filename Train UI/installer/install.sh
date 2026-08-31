@@ -4,7 +4,8 @@ set -Eeuo pipefail
 REPO_URL="https://github.com/AloeVeraZ/TrainUI.git"
 APP_DIR="${TRAINUI_APP_DIR:-$HOME/TrainUI}"
 VENV_DIR="$APP_DIR/.venv"
-MAIN_FILE="$APP_DIR/timertest.py"
+SOURCE_DIR="$APP_DIR"
+MAIN_FILE=""
 RUNNER="$APP_DIR/run_trainui.sh"
 AUTOSTART_DIR="$HOME/.config/autostart"
 LABWC_DIR="$HOME/.config/labwc"
@@ -128,12 +129,15 @@ install_fresh_copy() {
 }
 
 if [ -d "$APP_DIR/.git" ]; then
-    # Older installers generated run_trainui.sh without adding it to .gitignore.
-    # Exclude that installer-owned file so existing installations can upgrade.
+    # Ignore installer-owned runtime files even when upgrading a checkout from
+    # before the project-family root .gitignore existed.
     checkout_changes=""
     checkout_is_valid=true
     if checkout_changes="$(git -C "$APP_DIR" status --porcelain --untracked-files=all)"; then
-        checkout_changes="$(printf '%s\n' "$checkout_changes" | grep -vFx '?? run_trainui.sh' || true)"
+        checkout_changes="$(
+            printf '%s\n' "$checkout_changes" |
+                grep -vE '^\?\? (run_trainui\.sh|trainui\.log|\.trainui\.lock|\.venv/)' || true
+        )"
     else
         checkout_is_valid=false
     fi
@@ -160,27 +164,36 @@ else
     fi
 fi
 
+# TrainUI originally occupied the repository root. The current family repo
+# keeps the Raspberry Pi build in "Train UI/" beside "Train UI Mini/". Detect
+# both layouts so existing flat checkouts and current clones use the same
+# installer and preserve the same ~/TrainUI runtime directory.
+if [ -f "$APP_DIR/Train UI/timertest.py" ]; then
+    SOURCE_DIR="$APP_DIR/Train UI"
+fi
+MAIN_FILE="$SOURCE_DIR/timertest.py"
+
 if [ ! -f "$MAIN_FILE" ]; then
     fail "timertest.py was not found in the GitHub repository."
 fi
 
-if [ ! -f "$APP_DIR/installer/configure.py" ] || \
-   [ ! -f "$APP_DIR/installer/subway_catalog.json" ]; then
+if [ ! -f "$SOURCE_DIR/installer/configure.py" ] || \
+   [ ! -f "$SOURCE_DIR/installer/subway_catalog.json" ]; then
     fail "The route and station configurator was not found in the GitHub repository."
 fi
 
 say "Configuring the train and station..."
 mkdir -p "$TRAINUI_CONFIG_DIR"
 if [ -t 1 ] && [ -r /dev/tty ]; then
-    python3 "$APP_DIR/installer/configure.py" \
+    python3 "$SOURCE_DIR/installer/configure.py" \
         --config "$TRAINUI_CONFIG_FILE" </dev/tty
 else
-    python3 "$APP_DIR/installer/configure.py" \
+    python3 "$SOURCE_DIR/installer/configure.py" \
         --config "$TRAINUI_CONFIG_FILE" \
         --non-interactive
 fi
 
-say "Hardening Wi-Fi reliability..."
+say "Configuring Wi-Fi reliability and automatic setup fallback..."
 
 # NetworkManager uses 2 for disabled Wi-Fi power saving. This global setting
 # contains no network name or credentials. Do not modify individual saved
@@ -193,22 +206,52 @@ wifi.powersave=2
 EOF
 fi
 
-if [ ! -f "$APP_DIR/installer/connectivity-watchdog.sh" ]; then
-    fail "The Wi-Fi watchdog was not found in the GitHub repository."
+if [ ! -f "$SOURCE_DIR/installer/connectivity-watchdog.sh" ] || \
+   [ ! -f "$SOURCE_DIR/installer/wifi_setup.py" ] || \
+   [ ! -f "$SOURCE_DIR/installer/systemd/trainui-wifi-setup.service" ]; then
+    fail "The Wi-Fi setup files were not found in the GitHub repository."
 fi
 
+# Keep installing the older oneshot watchdog for Raspberry Pi OS releases that
+# do not let NetworkManager control Wi-Fi. Current Raspberry Pi OS uses the new
+# service below; retaining this fallback keeps installer upgrades compatible.
 sudo install -m 0755 \
-    "$APP_DIR/installer/connectivity-watchdog.sh" \
+    "$SOURCE_DIR/installer/connectivity-watchdog.sh" \
     /usr/local/sbin/trainui-connectivity
+sudo install -m 0755 \
+    "$SOURCE_DIR/installer/wifi_setup.py" \
+    /usr/local/sbin/trainui-wifi-setup
 sudo install -m 0644 \
-    "$APP_DIR/installer/systemd/trainui-connectivity.service" \
+    "$SOURCE_DIR/installer/systemd/trainui-connectivity.service" \
     /etc/systemd/system/trainui-connectivity.service
 sudo install -m 0644 \
-    "$APP_DIR/installer/systemd/trainui-connectivity.timer" \
+    "$SOURCE_DIR/installer/systemd/trainui-connectivity.timer" \
     /etc/systemd/system/trainui-connectivity.timer
+sudo install -m 0644 \
+    "$SOURCE_DIR/installer/systemd/trainui-wifi-setup.service" \
+    /etc/systemd/system/trainui-wifi-setup.service
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now trainui-connectivity.timer
+
+WIFI_SETUP_ENABLED=false
+if command -v nmcli >/dev/null 2>&1 && \
+   nmcli -t -f DEVICE,TYPE device status 2>/dev/null | grep ':wifi$' >/dev/null; then
+    # Capture the currently active Raspberry Pi Imager connection before the
+    # monitor starts. A rerun while the setup hotspot is active preserves the
+    # previously captured client profile.
+    if ! sudo /usr/local/sbin/trainui-wifi-setup init >/dev/null; then
+        fail "The NetworkManager Wi-Fi setup service could not be initialized."
+    fi
+    sudo systemctl disable --now trainui-connectivity.timer 2>/dev/null || true
+    sudo systemctl enable --now trainui-wifi-setup.service
+    WIFI_SETUP_ENABLED=true
+else
+    # Older installations may still use wpa_supplicant directly. Do not take
+    # over their networking during an update; preserve the existing watchdog.
+    sudo systemctl disable --now trainui-wifi-setup.service 2>/dev/null || true
+    sudo systemctl enable --now trainui-connectivity.timer
+    say "NetworkManager does not control a Wi-Fi adapter; keeping the legacy reconnect watchdog."
+fi
 
 say "Creating the TrainUI Python environment..."
 
@@ -216,8 +259,8 @@ python3 -m venv --system-site-packages "$VENV_DIR"
 
 "$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
 
-if [ -f "$APP_DIR/requirements.txt" ]; then
-    "$VENV_DIR/bin/python" -m pip install -r "$APP_DIR/requirements.txt"
+if [ -f "$SOURCE_DIR/requirements.txt" ]; then
+    "$VENV_DIR/bin/python" -m pip install -r "$SOURCE_DIR/requirements.txt"
 else
     "$VENV_DIR/bin/python" -m pip install requests protobuf gtfs-realtime-bindings pillow
 fi
@@ -428,7 +471,12 @@ fi
 say "Installation complete."
 echo "The Pi will reboot in five seconds."
 echo "TrainUI will start automatically at 270 degrees."
-echo "Network-agnostic Wi-Fi reliability checks run every 30 seconds."
+if [ "$WIFI_SETUP_ENABLED" = true ]; then
+    echo "Wi-Fi fallback: join TrainUI with password TRAINUI1 after 30 seconds offline."
+    echo "Wi-Fi setup page: http://10.42.0.1"
+else
+    echo "Legacy Wi-Fi reliability checks run every 30 seconds."
+fi
 echo "Desktop, console, X11, Wayland, and system sleep blanking are disabled."
 echo "Runtime log: $LOG_FILE"
 

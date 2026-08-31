@@ -94,6 +94,10 @@ TRAIN_REFRESH_MS = 30_000
 WEATHER_REFRESH_MS = 10 * 60_000
 STATUS_REFRESH_MS = 5 * 60_000
 SYSTEM_REFRESH_MS = 5_000
+WIFI_SETUP_SSID = "TrainUI"
+WIFI_SETUP_PASSWORD = "TRAINUI1"
+WIFI_SETUP_URL = "http://10.42.0.1"
+WIFI_SETUP_PROFILE = "TrainUI-Setup"
 
 # ---- Palette & Geometry Constants ---------------------------------------
 BG = "#030914"
@@ -172,6 +176,15 @@ def get_wifi_ssid():
 
     if shutil.which("nmcli"):
         try:
+            active = subprocess.run(
+                ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"],
+                capture_output=True, text=True, timeout=2,
+            )
+            if active.returncode == 0:
+                for line in active.stdout.splitlines():
+                    if line.startswith(f"{WIFI_SETUP_PROFILE}:"):
+                        return WIFI_SETUP_SSID
+
             res = subprocess.run(
                 ["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"],
                 capture_output=True, text=True, timeout=2,
@@ -768,9 +781,18 @@ class Dashboard(tk.Tk):
 
         # 6. Network IP & Connection
         ip_addr = get_ip_address()
-        ssid = truncate(get_wifi_ssid(), 16)
-        self.ip_label.config(text=f"IP: {ip_addr}")
-        self.net_label.config(text=f"Connection: {ssid}")
+        wifi_ssid = get_wifi_ssid()
+        if wifi_ssid == WIFI_SETUP_SSID:
+            # Put everything needed to reach the fallback portal on the TrainUI
+            # screen so setup does not depend on having the README nearby.
+            self.ip_label.config(text=f"Setup page: {WIFI_SETUP_URL}")
+            self.net_label.config(
+                text=f"Hotspot: {WIFI_SETUP_SSID}  Password: {WIFI_SETUP_PASSWORD}"
+            )
+        else:
+            # Never display credentials for a normal client connection.
+            self.ip_label.config(text=f"IP: {ip_addr}")
+            self.net_label.config(text=f"Connection: {truncate(wifi_ssid, 16)}")
 
         # 7. Network Upload/Download Speeds
         current_rx, current_tx = self._get_total_net_bytes()
