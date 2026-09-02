@@ -117,13 +117,13 @@ The [step-by-step assembly guide](Assembly%20Guide/) covers the faceplate, scree
 curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/Train%20UI%20XL/installer/install.sh | bash
 ```
 
-Choose a train and station, then choose whether the display should sleep on a daily schedule. Times use the Pi's local time and the 24-hour clock: `2300` is 11:00 PM, `0800` is 8:00 AM, and `2400` is midnight. The installer then sets automatic startup and Wi-Fi recovery and reboots.
+Choose a train and station, then answer `Y` or `N` for daily display sleep. Enter exactly four digits in 24-hour `HHMM` format: `2300` is 11:00 PM, `0800` is 8:00 AM, and `2400` is midnight. The installer then sets automatic startup and Wi-Fi recovery and reboots.
 
 If the Pi stays offline for 30 seconds, join **TrainUI** with password **TRAINUI1** and open `http://10.42.0.1`. The screen shows these setup details only while the hotspot is active.
 
 ## Update, change stations, or change sleep time
 
-Run the same command again. It downloads only the small XL runtime files, then lets you change both the train/station and daily sleep times:
+Run the same command again. Normal reruns use the fast update path: they download only the small XL runtime files, skip unchanged system setup, and do not reboot. You can change both the train/station and daily sleep times during the update:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/Train%20UI%20XL/installer/install.sh | bash

@@ -96,6 +96,22 @@ class InstallerLayoutTests(unittest.TestCase):
         self.assertIn('skipping downloads', self.installer)
         self.assertNotIn('pip install --upgrade', self.installer)
 
+    def test_completed_install_uses_no_reboot_fast_path(self):
+        self.assertIn('CORE_SETUP_STAMP=', self.installer)
+        self.assertIn('core_setup_required=false', self.installer)
+        self.assertIn('using the fast update path', self.installer)
+        self.assertIn('install_if_changed()', self.installer)
+        self.assertIn('Fast update complete. No reboot is needed.', self.installer)
+        self.assertIn('if [ "$core_setup_required" = true ]; then', self.installer)
+
+    def test_sudo_prompt_explains_invisible_linux_password_input(self):
+        self.assertIn('ensure_sudo()', self.installer)
+        self.assertIn('Nothing is shown while you type.', self.installer)
+
+    def test_noninteractive_update_preserves_schedule_without_sudo(self):
+        self.assertIn('elif [ -f "$POWER_SCHEDULE_CONFIG" ]; then', self.installer)
+        self.assertNotIn('elif sudo test -f "$POWER_SCHEDULE_CONFIG"; then', self.installer)
+
     def test_pi_download_only_contains_xl_runtime_files(self):
         self.assertIn("RUNTIME_SPARSE_PATHS=(", self.installer)
         self.assertIn('"/Train UI XL/timertest.py"', self.installer)
@@ -325,7 +341,6 @@ class InstallerLayoutTests(unittest.TestCase):
             with self.subTest(expected=expected):
                 self.assertIn(expected, self.installer)
                 self.assertIn(expected, self.image_stage)
-        self.assertIn("--apply-existing", self.installer)
         self.assertIn("--initial", self.installer)
         self.assertIn("/run/trainui/scheduled-sleep", self.installer)
         self.assertIn("/run/trainui/scheduled-sleep", self.image_launcher)
@@ -334,7 +349,7 @@ class InstallerLayoutTests(unittest.TestCase):
         self.assertLess(
             self.installer.index('if [ -t 1 ] && [ -r /dev/tty ]; then',
                                  self.installer.index('say "Configuring optional daily display sleep..."')),
-            self.installer.index('elif sudo test -f "$POWER_SCHEDULE_CONFIG"; then'),
+            self.installer.index('elif [ -f "$POWER_SCHEDULE_CONFIG" ]; then'),
         )
         self.assertIn("Update, change stations, or change sleep time", self.readme)
         self.assertGreaterEqual(self.readme.count("trainui-schedule"), 1)

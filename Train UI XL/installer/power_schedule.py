@@ -26,16 +26,11 @@ TIMER_NAMES = ("trainui-sleep.timer", "trainui-wake.timer")
 
 
 def parse_time(value: str) -> str:
-    """Return a validated time as HH:MM, accepting HHMM and 24:00."""
+    """Validate user-entered HHMM and return the stored HH:MM form."""
     cleaned = value.strip()
-    if len(cleaned) == 4 and cleaned.isdigit():
-        hour_text, minute_text = cleaned[:2], cleaned[2:]
-    elif len(cleaned) == 5 and cleaned[2] == ":":
-        hour_text, minute_text = cleaned.split(":", 1)
-        if not hour_text.isdigit() or not minute_text.isdigit():
-            raise ValueError("Use four digits such as 2300 or 08:00.")
-    else:
-        raise ValueError("Use four digits such as 2300 or 08:00.")
+    if len(cleaned) != 4 or not cleaned.isdigit():
+        raise ValueError("Use exactly four digits: for example, 2300 or 0800.")
+    hour_text, minute_text = cleaned[:2], cleaned[2:]
 
     hour = int(hour_text)
     minute = int(minute_text)
@@ -48,13 +43,26 @@ def parse_time(value: str) -> str:
     return f"{hour:02d}:{minute:02d}"
 
 
+def normalize_time(value: str) -> str:
+    """Accept stored HH:MM values while keeping terminal input HHMM-only."""
+    cleaned = value.strip()
+    if len(cleaned) == 5 and cleaned[2] == ":":
+        compact = cleaned.replace(":", "", 1)
+        return parse_time(compact)
+    return parse_time(cleaned)
+
+
+def display_time(value: str) -> str:
+    return normalize_time(value).replace(":", "")
+
+
 def parse_yes_no(value: str) -> bool:
     cleaned = value.strip().lower()
-    if cleaned in {"y", "yes", "1"}:
+    if cleaned == "y":
         return True
-    if cleaned in {"n", "no", "2"}:
+    if cleaned == "n":
         return False
-    raise ValueError("Enter Y or 1 for yes, or N or 2 for no.")
+    raise ValueError("Enter Y for yes or N for no.")
 
 
 def timer_override(clock_time: str) -> str:
@@ -67,9 +75,9 @@ def timer_override(clock_time: str) -> str:
 
 def schedule_is_sleeping(now: str, sleep_time: str, wake_time: str) -> bool:
     """Return whether HH:MM falls inside the daily sleep interval."""
-    current = parse_time(now)
-    sleep = parse_time(sleep_time)
-    wake = parse_time(wake_time)
+    current = normalize_time(now)
+    sleep = normalize_time(sleep_time)
+    wake = normalize_time(wake_time)
     if sleep == wake:
         raise ValueError("Sleep and wake times must be different.")
     if sleep < wake:
@@ -110,6 +118,23 @@ def read_config(path: Path = CONFIG_PATH) -> dict[str, object] | None:
     return data
 
 
+def configs_match(current: dict[str, object] | None, desired: dict[str, object]) -> bool:
+    if current is None:
+        return False
+    try:
+        return (
+            bool(current["enabled"]) == bool(desired["enabled"])
+            and normalize_time(str(current["sleep_time"]))
+            == normalize_time(str(desired["sleep_time"]))
+            and normalize_time(str(current["wake_time"]))
+            == normalize_time(str(desired["wake_time"]))
+            and str(current["user"]) == str(desired["user"])
+            and str(current["home"]) == str(desired["home"])
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
 def run_systemctl(*arguments: str) -> None:
     subprocess.run(["systemctl", *arguments], check=True)
 
@@ -123,8 +148,8 @@ def apply_config(
     use_systemctl: bool = True,
 ) -> None:
     enabled = bool(config["enabled"])
-    sleep_time = parse_time(str(config["sleep_time"]))
-    wake_time = parse_time(str(config["wake_time"]))
+    sleep_time = normalize_time(str(config["sleep_time"]))
+    wake_time = normalize_time(str(config["wake_time"]))
     if sleep_time == wake_time:
         raise ValueError("Sleep and wake times must be different.")
 
@@ -178,7 +203,7 @@ def prompt_yes_no(prompt: str) -> bool:
 
 def prompt_time(prompt: str, default: str | None = None) -> str:
     while True:
-        suffix = f" [{default}]" if default else ""
+        suffix = f" [{display_time(default)}]" if default else ""
         entered = input(f"{prompt}{suffix}: ").strip()
         if not entered and default:
             return default
@@ -222,6 +247,31 @@ def elevate_if_needed(arguments: list[str]) -> None:
     )
 
 
+def elevate_with_config(config: dict[str, object]) -> None:
+    if os.geteuid() == 0:
+        return
+    print("Administrator access is needed to save the schedule.")
+    print("Type your password and press Enter. Nothing is shown while you type.", flush=True)
+    os.execvp(
+        "sudo",
+        [
+            "sudo",
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "--set-enabled",
+            "yes" if bool(config["enabled"]) else "no",
+            "--sleep-time",
+            str(config["sleep_time"]),
+            "--wake-time",
+            str(config["wake_time"]),
+            "--owner",
+            str(config["user"]),
+            "--home",
+            str(config["home"]),
+        ],
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Set TrainUI's repeating daily display sleep and wake times."
@@ -231,6 +281,9 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--apply-existing", action="store_true", help=argparse.SUPPRESS)
     mode.add_argument("--disable", action="store_true", help=argparse.SUPPRESS)
     mode.add_argument("--sync-state", action="store_true", help=argparse.SUPPRESS)
+    mode.add_argument("--set-enabled", choices=("yes", "no"), help=argparse.SUPPRESS)
+    parser.add_argument("--sleep-time", help=argparse.SUPPRESS)
+    parser.add_argument("--wake-time", help=argparse.SUPPRESS)
     parser.add_argument("--owner", help=argparse.SUPPRESS)
     parser.add_argument("--home", help=argparse.SUPPRESS)
     return parser
@@ -238,7 +291,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(arguments: list[str] | None = None) -> int:
     raw_arguments = list(sys.argv[1:] if arguments is None else arguments)
-    elevate_if_needed(raw_arguments)
     args = build_parser().parse_args(raw_arguments)
     owner, home = resolve_identity(args.owner, args.home)
     current = read_config()
@@ -254,7 +306,31 @@ def main(arguments: list[str] | None = None) -> int:
         run_systemctl("start", action)
         return 0
 
+    if args.set_enabled is not None:
+        elevate_if_needed(raw_arguments)
+        if args.sleep_time is None or args.wake_time is None:
+            print("The internal schedule update is missing a time.", file=sys.stderr)
+            return 2
+        config = {
+            "enabled": args.set_enabled == "yes",
+            "sleep_time": normalize_time(args.sleep_time),
+            "wake_time": normalize_time(args.wake_time),
+            "user": owner,
+            "home": home,
+        }
+        apply_config(config)
+        if bool(config["enabled"]):
+            print(
+                f"Daily sleep is set for {display_time(str(config['sleep_time']))}; "
+                f"wake is set for {display_time(str(config['wake_time']))}."
+            )
+        else:
+            print("Daily TrainUI sleep is disabled. The display will stay on.")
+        print("Run trainui-schedule at any time to change this setting.")
+        return 0
+
     if args.apply_existing:
+        elevate_if_needed(raw_arguments)
         if current is None:
             print("No TrainUI sleep schedule has been configured yet.", file=sys.stderr)
             return 1
@@ -264,6 +340,7 @@ def main(arguments: list[str] | None = None) -> int:
         return 0
 
     if args.disable:
+        elevate_if_needed(raw_arguments)
         config = {
             "enabled": False,
             "sleep_time": "23:00",
@@ -277,10 +354,10 @@ def main(arguments: list[str] | None = None) -> int:
 
     print("\nTrainUI daily display sleep")
     print("This repeats every day using the Pi's local time and the 24-hour clock.")
-    print("Type hours first, then minutes: 2300 = 11:00 PM, 0800 = 8:00 AM,")
-    print("and 2400 = midnight. You may also type 23:00 or 08:00.\n")
+    print("Enter exactly four digits, with hours first and then minutes:")
+    print("2300 = 11:00 PM, 0800 = 8:00 AM, and 2400 = midnight.\n")
 
-    enabled = prompt_yes_no("Enable automatic daily sleep and wake? [Y/N or 1/2]: ")
+    enabled = prompt_yes_no("Enable automatic daily sleep and wake? [Y/N]: ")
     previous_sleep = str(current.get("sleep_time", "23:00")) if current else None
     previous_wake = str(current.get("wake_time", "08:00")) if current else None
     if enabled:
@@ -291,8 +368,8 @@ def main(arguments: list[str] | None = None) -> int:
                 break
             print("Sleep and wake times must be different.")
     else:
-        sleep_time = parse_time(previous_sleep or "23:00")
-        wake_time = parse_time(previous_wake or "08:00")
+        sleep_time = normalize_time(previous_sleep or "23:00")
+        wake_time = normalize_time(previous_wake or "08:00")
 
     config = {
         "enabled": enabled,
@@ -301,9 +378,17 @@ def main(arguments: list[str] | None = None) -> int:
         "user": owner,
         "home": home,
     }
+    if configs_match(current, config):
+        print("The daily display setting is unchanged; nothing needs to be reinstalled.")
+        print("Run trainui-schedule at any time to change this setting.")
+        return 0
+    elevate_with_config(config)
     apply_config(config)
     if enabled:
-        print(f"Daily sleep is set for {sleep_time}; wake is set for {wake_time}.")
+        print(
+            f"Daily sleep is set for {display_time(sleep_time)}; "
+            f"wake is set for {display_time(wake_time)}."
+        )
         print("The Pi remains powered so it can wake the display automatically.")
     else:
         print("Daily TrainUI sleep is disabled. The display will stay on.")

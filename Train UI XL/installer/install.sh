@@ -15,6 +15,8 @@ POWER_SCHEDULE_CONFIG="/etc/trainui/power-schedule.json"
 SCHEDULE_SLEEP_MARKER="/run/trainui/scheduled-sleep"
 LOG_FILE="$APP_DIR/trainui.log"
 DEPENDENCY_STAMP="$VENV_DIR/.trainui-requirements.sha256"
+MAIN_SOURCE_STAMP="$VENV_DIR/.trainui-main.sha256"
+CORE_SETUP_STAMP="$TRAINUI_CONFIG_DIR/core-setup-v2"
 GTFS_WHEEL_URL="https://files.pythonhosted.org/packages/b3/67/1f030547f94716b3259d99ad93467a6608703942bc62f35e43b1bb8bc2e9/gtfs_realtime_bindings-1.0.0-py3-none-any.whl"
 GTFS_WHEEL_SHA256="0a9b57a103a5401895b65b6051344003b5fb213523ea4383596be017e6d67e2d"
 RUNTIME_SPARSE_PATHS=(
@@ -35,6 +37,7 @@ apt_get() {
     local apt_output
 
     apt_output="$(mktemp)"
+    ensure_sudo
 
     while true; do
         # Raspberry Pi OS often starts PackageKit during boot. It can briefly
@@ -83,6 +86,27 @@ fail() {
     exit 1
 }
 
+sudo_ready=false
+
+ensure_sudo() {
+    if [ "$sudo_ready" = true ]; then
+        return 0
+    fi
+    if sudo -n true 2>/dev/null; then
+        sudo_ready=true
+        return 0
+    fi
+
+    say "Administrator access is required for Raspberry Pi system settings."
+    echo "Type the password for $USER and press Enter. Nothing is shown while you type."
+    if [ -r /dev/tty ]; then
+        sudo -v </dev/tty
+    else
+        fail "Open an interactive terminal and rerun the installer so sudo can request your password."
+    fi
+    sudo_ready=true
+}
+
 trap 'fail "Installation stopped on line $LINENO. Read the error above, then run this installer again."' ERR
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -91,6 +115,18 @@ fi
 
 if ! command -v sudo >/dev/null 2>&1; then
     fail "sudo is required. Use the normal Raspberry Pi OS user created in Raspberry Pi Imager."
+fi
+
+# A completed older installation may predate this stamp. These existing files
+# are a compatibility signal that the expensive OS setup already succeeded.
+core_setup_required=true
+if [ -f "$CORE_SETUP_STAMP" ] || {
+    [ -x "$VENV_DIR/bin/python" ] &&
+    [ -f "$TRAINUI_CONFIG_FILE" ] &&
+    [ -x "$RUNNER" ] &&
+    [ -f "$AUTOSTART_DIR/trainui.desktop" ]
+}; then
+    core_setup_required=false
 fi
 
 SYSTEM_PACKAGES=(
@@ -112,44 +148,50 @@ SYSTEM_PACKAGES=(
     x11-xserver-utils
 )
 
-missing_packages=()
-for package in "${SYSTEM_PACKAGES[@]}"; do
-    if ! package_is_installed "$package"; then
-        missing_packages+=("$package")
-    fi
-done
+if [ "$core_setup_required" = true ]; then
+    missing_packages=()
+    for package in "${SYSTEM_PACKAGES[@]}"; do
+        if ! package_is_installed "$package"; then
+            missing_packages+=("$package")
+        fi
+    done
 
-if [ "${#missing_packages[@]}" -gt 0 ]; then
-    say "Installing ${#missing_packages[@]} missing Raspberry Pi dependencies..."
-    refresh_apt_lists
-    apt_get install -y "${missing_packages[@]}"
-else
-    say "Raspberry Pi dependencies are already installed; skipping APT."
-fi
-
-# Install a graphical desktop when Raspberry Pi OS Lite is being used.
-if ! command -v labwc >/dev/null 2>&1 && \
-   ! command -v startlxde-pi >/dev/null 2>&1; then
-    say "No graphical desktop detected. Installing one..."
-    refresh_apt_lists
-
-    if apt-cache show rpd-wayland-core >/dev/null 2>&1; then
-        apt_get install -y \
-            rpd-wayland-core \
-            rpd-theme \
-            rpd-preferences \
-            lightdm
-    elif apt-cache show raspberrypi-ui-mods >/dev/null 2>&1; then
-        apt_get install -y \
-            raspberrypi-ui-mods \
-            lightdm
+    if [ "${#missing_packages[@]}" -gt 0 ]; then
+        say "Installing ${#missing_packages[@]} missing Raspberry Pi dependencies..."
+        refresh_apt_lists
+        apt_get install -y "${missing_packages[@]}"
     else
-        fail "Desktop packages were not found. Flash Raspberry Pi OS with Desktop and rerun this installer."
+        say "Raspberry Pi dependencies are already installed; skipping APT."
     fi
-fi
 
-sudo systemctl set-default graphical.target
-sudo systemctl enable lightdm 2>/dev/null || true
+    # Install a graphical desktop when Raspberry Pi OS Lite is being used.
+    if ! command -v labwc >/dev/null 2>&1 && \
+       ! command -v startlxde-pi >/dev/null 2>&1; then
+        say "No graphical desktop detected. Installing one..."
+        refresh_apt_lists
+
+        if apt-cache show rpd-wayland-core >/dev/null 2>&1; then
+            apt_get install -y \
+                rpd-wayland-core \
+                rpd-theme \
+                rpd-preferences \
+                lightdm
+        elif apt-cache show raspberrypi-ui-mods >/dev/null 2>&1; then
+            apt_get install -y \
+                raspberrypi-ui-mods \
+                lightdm
+        else
+            fail "Desktop packages were not found. Flash Raspberry Pi OS with Desktop and rerun this installer."
+        fi
+    fi
+
+    say "Preparing desktop startup..."
+    ensure_sudo
+    sudo systemctl set-default graphical.target
+    sudo systemctl enable lightdm 2>/dev/null || true
+else
+    say "Existing TrainUI installation detected; using the fast update path."
+fi
 
 say "Downloading TrainUI from GitHub..."
 
@@ -178,6 +220,23 @@ clone_runtime_copy() {
         --sparse \
         "$REPO_URL" "$destination"
     configure_runtime_checkout "$destination"
+}
+
+# Return success only when the destination changed. This keeps fast updates
+# from rewriting files on the SD card or reloading systemd unnecessarily.
+install_if_changed() {
+    local source_file="$1"
+    local destination_file="$2"
+    local file_mode="$3"
+
+    if cmp -s "$source_file" "$destination_file" 2>/dev/null; then
+        return 1
+    fi
+    ensure_sudo
+    if ! sudo install -D -m "$file_mode" "$source_file" "$destination_file"; then
+        fail "Could not install $destination_file."
+    fi
+    return 0
 }
 
 install_fresh_copy() {
@@ -268,7 +327,10 @@ say "Configuring Wi-Fi reliability and automatic setup fallback..."
 # NetworkManager uses 2 for disabled Wi-Fi power saving. This global setting
 # contains no network name or credentials. Do not modify individual saved
 # connections: their names, backends, and permissions vary between systems.
-if command -v nmcli >/dev/null 2>&1; then
+if command -v nmcli >/dev/null 2>&1 && \
+   ! grep -qx 'wifi.powersave=2' /etc/NetworkManager/conf.d/90-trainui-wifi.conf \
+       2>/dev/null; then
+    ensure_sudo
     sudo install -d -m 0755 /etc/NetworkManager/conf.d
     sudo tee /etc/NetworkManager/conf.d/90-trainui-wifi.conf >/dev/null <<'EOF'
 [connection]
@@ -282,24 +344,31 @@ if [ ! -f "$APP_DIR/installer/connectivity-watchdog.sh" ] || \
     fail "The Wi-Fi setup files were not found in the GitHub repository."
 fi
 
-# Keep installing the older oneshot watchdog for Raspberry Pi OS releases that
-# do not let NetworkManager control Wi-Fi. Current Raspberry Pi OS uses the new
-# service below; retaining this fallback keeps installer upgrades compatible.
-sudo install -m 0755 \
+# Keep the older watchdog installed for Raspberry Pi OS releases that do not
+# let NetworkManager control Wi-Fi, but touch nothing when files are unchanged.
+wifi_files_changed=false
+systemd_units_changed=false
+if install_if_changed \
     "$APP_DIR/installer/connectivity-watchdog.sh" \
-    /usr/local/sbin/trainui-connectivity
-sudo install -m 0755 \
+    /usr/local/sbin/trainui-connectivity 0755; then
+    wifi_files_changed=true
+fi
+if install_if_changed \
     "$APP_DIR/installer/wifi_setup.py" \
-    /usr/local/sbin/trainui-wifi-setup
-sudo install -m 0644 \
-    "$APP_DIR/installer/systemd/trainui-connectivity.service" \
-    /etc/systemd/system/trainui-connectivity.service
-sudo install -m 0644 \
-    "$APP_DIR/installer/systemd/trainui-connectivity.timer" \
-    /etc/systemd/system/trainui-connectivity.timer
-sudo install -m 0644 \
-    "$APP_DIR/installer/systemd/trainui-wifi-setup.service" \
-    /etc/systemd/system/trainui-wifi-setup.service
+    /usr/local/sbin/trainui-wifi-setup 0755; then
+    wifi_files_changed=true
+fi
+for wifi_unit in \
+    trainui-connectivity.service \
+    trainui-connectivity.timer \
+    trainui-wifi-setup.service; do
+    if install_if_changed \
+        "$APP_DIR/installer/systemd/$wifi_unit" \
+        "/etc/systemd/system/$wifi_unit" 0644; then
+        wifi_files_changed=true
+        systemd_units_changed=true
+    fi
+done
 
 if [ ! -f "$APP_DIR/installer/power_schedule.py" ] || \
    [ ! -f "$APP_DIR/installer/display-power.sh" ] || \
@@ -311,44 +380,62 @@ if [ ! -f "$APP_DIR/installer/power_schedule.py" ] || \
     fail "The automatic display sleep files were not found in the GitHub repository."
 fi
 
-# These files are installed on every run so existing TrainUI installations
-# gain the feature without needing a fresh Raspberry Pi OS image.
-sudo install -m 0755 \
+# Existing installations gain new schedule files, while unchanged files are
+# left alone to avoid unnecessary SD-card writes and service reloads.
+if install_if_changed \
     "$APP_DIR/installer/power_schedule.py" \
-    /usr/local/bin/trainui-schedule
-sudo install -m 0755 \
+    /usr/local/bin/trainui-schedule 0755; then
+    :
+fi
+if install_if_changed \
     "$APP_DIR/installer/display-power.sh" \
-    /usr/local/sbin/trainui-display-power
+    /usr/local/sbin/trainui-display-power 0755; then
+    :
+fi
 for schedule_unit in \
     trainui-sleep.service \
     trainui-sleep.timer \
     trainui-wake.service \
     trainui-wake.timer \
     trainui-schedule-sync.service; do
-    sudo install -m 0644 \
+    if install_if_changed \
         "$APP_DIR/installer/systemd/$schedule_unit" \
-        "/etc/systemd/system/$schedule_unit"
+        "/etc/systemd/system/$schedule_unit" 0644; then
+        systemd_units_changed=true
+    fi
 done
 
-sudo systemctl daemon-reload
+if [ "$systemd_units_changed" = true ]; then
+    ensure_sudo
+    sudo systemctl daemon-reload
+fi
 
 WIFI_SETUP_ENABLED=false
 if command -v nmcli >/dev/null 2>&1 && \
    nmcli -t -f DEVICE,TYPE device status 2>/dev/null | grep ':wifi$' >/dev/null; then
-    # Capture the currently active Raspberry Pi Imager connection before the
-    # monitor starts. A rerun while the setup hotspot is active preserves the
-    # previously captured client profile.
-    if ! sudo /usr/local/sbin/trainui-wifi-setup init >/dev/null; then
-        fail "The NetworkManager Wi-Fi setup service could not be initialized."
+    if ! systemctl is-enabled --quiet trainui-wifi-setup.service 2>/dev/null || \
+       systemctl is-enabled --quiet trainui-connectivity.timer 2>/dev/null; then
+        # Capture the Imager connection only on first install or when migrating
+        # from the legacy watchdog. Fast updates preserve the existing state.
+        ensure_sudo
+        if ! sudo /usr/local/sbin/trainui-wifi-setup init >/dev/null; then
+            fail "The NetworkManager Wi-Fi setup service could not be initialized."
+        fi
+        sudo systemctl disable --now trainui-connectivity.timer 2>/dev/null || true
+        sudo systemctl enable --now trainui-wifi-setup.service
+    elif [ "$wifi_files_changed" = true ] || \
+         ! systemctl is-active --quiet trainui-wifi-setup.service 2>/dev/null; then
+        ensure_sudo
+        sudo systemctl restart trainui-wifi-setup.service
     fi
-    sudo systemctl disable --now trainui-connectivity.timer 2>/dev/null || true
-    sudo systemctl enable --now trainui-wifi-setup.service
     WIFI_SETUP_ENABLED=true
 else
-    # Older installations may still use wpa_supplicant directly. Do not take
-    # over their networking during an update; preserve the existing watchdog.
-    sudo systemctl disable --now trainui-wifi-setup.service 2>/dev/null || true
-    sudo systemctl enable --now trainui-connectivity.timer
+    if systemctl is-enabled --quiet trainui-wifi-setup.service 2>/dev/null || \
+       ! systemctl is-enabled --quiet trainui-connectivity.timer 2>/dev/null; then
+        ensure_sudo
+        sudo systemctl disable --now trainui-wifi-setup.service 2>/dev/null || true
+        sudo systemctl enable --now trainui-connectivity.timer
+    fi
     say "NetworkManager does not control a Wi-Fi adapter; keeping the legacy reconnect watchdog."
 fi
 
@@ -373,8 +460,7 @@ requirements_hash="$(sha256sum "$APP_DIR/requirements.txt" | awk '{print $1}')"
 dependencies_are_current=false
 
 if [ -f "$DEPENDENCY_STAMP" ] && \
-   [ "$(cat "$DEPENDENCY_STAMP")" = "$requirements_hash" ] && \
-   python_imports_ok; then
+   [ "$(cat "$DEPENDENCY_STAMP")" = "$requirements_hash" ]; then
     dependencies_are_current=true
 fi
 
@@ -408,14 +494,18 @@ else
     if ! python_imports_ok; then
         fail "TrainUI's Python libraries could not be imported after installation."
     fi
+    printf '%s\n' "$requirements_hash" > "$DEPENDENCY_STAMP"
 fi
 
-say "Checking timertest.py and its libraries..."
-
-"$VENV_DIR/bin/python" -m py_compile "$MAIN_FILE"
-echo "All TrainUI imports passed."
-
-printf '%s\n' "$requirements_hash" > "$DEPENDENCY_STAMP"
+main_source_hash="$(sha256sum "$MAIN_FILE" | awk '{print $1}')"
+if [ -f "$MAIN_SOURCE_STAMP" ] && \
+   [ "$(cat "$MAIN_SOURCE_STAMP")" = "$main_source_hash" ]; then
+    say "TrainUI code is unchanged; skipping Python validation."
+else
+    say "Checking the updated TrainUI code..."
+    "$VENV_DIR/bin/python" -m py_compile "$MAIN_FILE"
+    printf '%s\n' "$main_source_hash" > "$MAIN_SOURCE_STAMP"
+fi
 
 say "Creating the persistent 270-degree launcher..."
 
@@ -650,15 +740,14 @@ say "Configuring optional daily display sleep..."
 if [ -t 1 ] && [ -r /dev/tty ]; then
     # Interactive updates can change the station and the sleep schedule in the
     # same run. Existing times appear as defaults and can be kept with Enter.
-    sudo /usr/local/bin/trainui-schedule \
+    /usr/local/bin/trainui-schedule \
         --initial \
         --owner "$USER" \
         --home "$HOME" </dev/tty
-elif sudo test -f "$POWER_SCHEDULE_CONFIG"; then
-    sudo /usr/local/bin/trainui-schedule \
-        --apply-existing \
-        --owner "$USER" \
-        --home "$HOME"
+elif [ -f "$POWER_SCHEDULE_CONFIG" ]; then
+    # A non-interactive update cannot ask whether the schedule should change.
+    # Keep the valid existing timers untouched instead of requiring sudo and
+    # rewriting the same files.
     echo "Keeping the existing daily display setting. Run trainui-schedule to change it."
 else
     # A non-interactive install cannot safely guess the owner's desired times.
@@ -695,6 +784,7 @@ cat >> "$LABWC_DIR/autostart" <<EOF
 # TRAINUI END
 EOF
 
+if [ "$core_setup_required" = true ]; then
 say "Enabling desktop auto-login and preventing sleep or blanking..."
 
 if command -v raspi-config >/dev/null 2>&1; then
@@ -759,8 +849,14 @@ if [ -f "$CMDLINE_FILE" ]; then
     fi
 fi
 
+fi
+
+mkdir -p "$TRAINUI_CONFIG_DIR"
+printf 'complete\n' > "$CORE_SETUP_STAMP"
+
+if [ "$core_setup_required" = true ]; then
 say "Installation complete."
-echo "The Pi will reboot in five seconds."
+echo "The Pi will reboot to finish the first-time system setup."
 echo "TrainUI will start automatically at 270 degrees."
 echo "A frozen TrainUI process restarts automatically within about one minute."
 echo "The application is also recycled once daily and the Pi hardware watchdog is enabled."
@@ -775,5 +871,12 @@ echo "Daily display sleep: run trainui-schedule to enable, disable, or change it
 echo "Runtime log: $LOG_FILE"
 
 sync
-sleep 5
 sudo reboot
+else
+    say "Fast update complete. No reboot is needed."
+    echo "TrainUI will reload the updated code and configuration now."
+    echo "Daily display sleep: run trainui-schedule to change it later."
+    echo "Runtime log: $LOG_FILE"
+    pkill -TERM -u "$(id -u)" -f '/timertest[.]py([[:space:]]|$)' \
+        2>/dev/null || true
+fi

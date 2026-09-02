@@ -23,7 +23,7 @@
 curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/Train%20UI%20XL/installer/install.sh | bash
 ```
 
-Choose a train and station, then answer `Y/N` or `1/2` for daily display sleep. It uses 24-hour time: `2300` is 11:00 PM, `0800` is 8:00 AM, and `2400` is midnight. Run the same command again to update TrainUI or change the station and schedule. Updates download only the small XL runtime files, not the CAD models or documentation photos.
+Choose a train and station, then answer `Y` or `N` for daily display sleep. Enter time as four digits in 24-hour `HHMM` format: `2300` is 11:00 PM, `0800` is 8:00 AM, and `2400` is midnight. Run the same command again to update TrainUI or change the station and schedule. Normal reruns skip unchanged system setup and do not reboot; they download only the small XL runtime files, not the CAD models or documentation photos.
 
 Your selection stays in `~/.config/trainui/config.json`. If an old checkout is damaged or changed, the installer saves it as `~/TrainUI.backup.*` before replacing it.
 

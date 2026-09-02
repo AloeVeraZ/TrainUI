@@ -2,6 +2,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "installer" / "power_schedule.py"
@@ -14,36 +15,92 @@ SPEC.loader.exec_module(power_schedule)
 class PowerScheduleTests(unittest.TestCase):
     def test_terminal_help_explains_requested_input_formats(self):
         source = MODULE_PATH.read_text(encoding="utf-8")
-        self.assertIn("[Y/N or 1/2]", source)
+        self.assertIn("[Y/N]", source)
+        self.assertNotIn("Y/N or 1/2", source)
+        self.assertNotIn("You may also type", source)
         self.assertIn("24-hour clock", source)
         for example in ("2300 = 11:00 PM", "0800 = 8:00 AM", "2400 = midnight"):
             self.assertIn(example, source)
 
-    def test_accepts_four_digit_and_colon_24_hour_times(self):
+    def test_accepts_only_four_digit_24_hour_input(self):
         cases = {
             "0000": "00:00",
             "0800": "08:00",
-            "23:59": "23:59",
+            "2359": "23:59",
             "2400": "00:00",
-            "24:00": "00:00",
         }
         for entered, expected in cases.items():
             with self.subTest(entered=entered):
                 self.assertEqual(power_schedule.parse_time(entered), expected)
 
     def test_rejects_invalid_times(self):
-        for entered in ("8", "800", "8:00", "2360", "2401", "2500", "noon"):
+        for entered in (
+            "8",
+            "800",
+            "8:00",
+            "08:00",
+            "23:00",
+            "23.00",
+            "2360",
+            "2401",
+            "2500",
+            "noon",
+        ):
             with self.subTest(entered=entered):
                 with self.assertRaises(ValueError):
                     power_schedule.parse_time(entered)
 
-    def test_accepts_both_requested_yes_no_styles(self):
-        for entered in ("Y", "yes", "1"):
-            self.assertTrue(power_schedule.parse_yes_no(entered))
-        for entered in ("N", "no", "2"):
-            self.assertFalse(power_schedule.parse_yes_no(entered))
-        with self.assertRaises(ValueError):
-            power_schedule.parse_yes_no("maybe")
+    def test_accepts_only_y_or_n(self):
+        self.assertTrue(power_schedule.parse_yes_no("Y"))
+        self.assertFalse(power_schedule.parse_yes_no("N"))
+        for entered in ("yes", "no", "1", "2", "maybe"):
+            with self.subTest(entered=entered):
+                with self.assertRaises(ValueError):
+                    power_schedule.parse_yes_no(entered)
+
+    def test_existing_normalized_config_times_remain_compatible(self):
+        self.assertEqual(power_schedule.normalize_time("23:00"), "23:00")
+        self.assertEqual(power_schedule.normalize_time("08:00"), "08:00")
+        self.assertEqual(power_schedule.display_time("23:00"), "2300")
+        self.assertEqual(power_schedule.display_time("0800"), "0800")
+
+    def test_unchanged_existing_schedule_matches_compact_user_input(self):
+        current = {
+            "enabled": True,
+            "sleep_time": "23:00",
+            "wake_time": "08:00",
+            "user": "trainui",
+            "home": "/home/trainui",
+        }
+        desired = {
+            **current,
+            "sleep_time": "2300",
+            "wake_time": "0800",
+        }
+        self.assertTrue(power_schedule.configs_match(current, desired))
+
+    def test_unchanged_interactive_schedule_skips_sudo_and_systemd_rewrite(self):
+        current = {
+            "enabled": True,
+            "sleep_time": "23:00",
+            "wake_time": "08:00",
+            "user": "trainui",
+            "home": "/home/trainui",
+        }
+        with (
+            mock.patch.object(power_schedule, "read_config", return_value=current),
+            mock.patch.object(
+                power_schedule,
+                "resolve_identity",
+                return_value=("trainui", "/home/trainui"),
+            ),
+            mock.patch("builtins.input", side_effect=("Y", "2300", "0800")),
+            mock.patch.object(power_schedule, "elevate_with_config") as elevate,
+            mock.patch.object(power_schedule, "apply_config") as apply,
+        ):
+            self.assertEqual(power_schedule.main([]), 0)
+        elevate.assert_not_called()
+        apply.assert_not_called()
 
     def test_overnight_sleep_interval(self):
         self.assertTrue(power_schedule.schedule_is_sleeping("23:30", "23:00", "08:00"))
