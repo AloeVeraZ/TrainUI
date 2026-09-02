@@ -121,9 +121,9 @@ Choose a train and station, then choose whether the display should sleep on a da
 
 If the Pi stays offline for 30 seconds, join **TrainUI** with password **TRAINUI1** and open `http://10.42.0.1`. The screen shows these setup details only while the hotspot is active.
 
-## Update or change stations
+## Update, change stations, or change sleep time
 
-Run the same command again:
+Run the same command again. It downloads only the small XL runtime files, then lets you change both the train/station and daily sleep times:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/Train%20UI%20XL/installer/install.sh | bash
@@ -132,6 +132,12 @@ curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/Train%20UI%2
 ## Commands
 
 ```bash
+# Update TrainUI, change the station, and review the sleep schedule
+curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/Train%20UI%20XL/installer/install.sh | bash
+
+# Change only the daily display sleep schedule
+trainui-schedule
+
 # View the log
 tail -f "$HOME/TrainUI/Train UI XL/trainui.log"
 
@@ -139,8 +145,6 @@ tail -f "$HOME/TrainUI/Train UI XL/trainui.log"
 systemctl status trainui-wifi-setup.service
 sudo journalctl -u trainui-wifi-setup.service --since today
 
-# Change or disable the daily display sleep schedule
-trainui-schedule
 ```
 
 ## Quick fixes

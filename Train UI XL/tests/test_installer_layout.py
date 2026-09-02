@@ -96,6 +96,22 @@ class InstallerLayoutTests(unittest.TestCase):
         self.assertIn('skipping downloads', self.installer)
         self.assertNotIn('pip install --upgrade', self.installer)
 
+    def test_pi_download_only_contains_xl_runtime_files(self):
+        self.assertIn("RUNTIME_SPARSE_PATHS=(", self.installer)
+        self.assertIn('"/Train UI XL/timertest.py"', self.installer)
+        self.assertIn('"/Train UI XL/requirements.txt"', self.installer)
+        self.assertIn('"/Train UI XL/installer/"', self.installer)
+        self.assertIn("--filter=blob:none", self.installer)
+        self.assertIn("--depth 1", self.installer)
+        self.assertIn("--no-tags", self.installer)
+        self.assertIn("--sparse", self.installer)
+        self.assertIn("sparse-checkout set --no-cone", self.installer)
+        self.assertNotIn('git clone --branch main --single-branch "$REPO_URL"', self.installer)
+
+    def test_one_import_check_is_reused_on_fast_updates(self):
+        self.assertEqual(self.installer.count("import requests"), 1)
+        self.assertIn("if ! python_imports_ok; then", self.installer)
+
     def test_python_install_never_uses_the_slow_piwheels_index(self):
         self.assertNotIn('piwheels', self.installer)
         self.assertIn('PIP_CONFIG_FILE=/dev/null', self.installer)
@@ -315,6 +331,13 @@ class InstallerLayoutTests(unittest.TestCase):
         self.assertIn("/run/trainui/scheduled-sleep", self.image_launcher)
         self.assertIn("Scheduled display sleep", self.installer)
         self.assertIn("Scheduled display sleep", self.image_launcher)
+        self.assertLess(
+            self.installer.index('if [ -t 1 ] && [ -r /dev/tty ]; then',
+                                 self.installer.index('say "Configuring optional daily display sleep..."')),
+            self.installer.index('elif sudo test -f "$POWER_SCHEDULE_CONFIG"; then'),
+        )
+        self.assertIn("Update, change stations, or change sleep time", self.readme)
+        self.assertGreaterEqual(self.readme.count("trainui-schedule"), 1)
 
     def test_public_command_points_directly_to_xl_installer(self):
         self.assertGreaterEqual(self.readme.count(PUBLIC_INSTALL_COMMAND), 2)

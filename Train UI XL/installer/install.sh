@@ -17,6 +17,12 @@ LOG_FILE="$APP_DIR/trainui.log"
 DEPENDENCY_STAMP="$VENV_DIR/.trainui-requirements.sha256"
 GTFS_WHEEL_URL="https://files.pythonhosted.org/packages/b3/67/1f030547f94716b3259d99ad93467a6608703942bc62f35e43b1bb8bc2e9/gtfs_realtime_bindings-1.0.0-py3-none-any.whl"
 GTFS_WHEEL_SHA256="0a9b57a103a5401895b65b6051344003b5fb213523ea4383596be017e6d67e2d"
+RUNTIME_SPARSE_PATHS=(
+    "/.gitignore"
+    "/Train UI XL/timertest.py"
+    "/Train UI XL/requirements.txt"
+    "/Train UI XL/installer/"
+)
 
 say() {
     printf '\n\033[1;36m[TrainUI]\033[0m %s\n' "$*"
@@ -147,6 +153,33 @@ sudo systemctl enable lightdm 2>/dev/null || true
 
 say "Downloading TrainUI from GitHub..."
 
+configure_runtime_checkout() {
+    local checkout_dir="$1"
+
+    # The Pi does not need CAD models, build photos, Mini assets, or site
+    # images. Blob filtering avoids downloading them; sparse checkout keeps
+    # only the sub-megabyte XL runtime files in the installation directory.
+    git -C "$checkout_dir" config remote.origin.promisor true
+    git -C "$checkout_dir" config remote.origin.partialclonefilter blob:none
+    git -C "$checkout_dir" sparse-checkout init --no-cone
+    git -C "$checkout_dir" sparse-checkout set --no-cone \
+        "${RUNTIME_SPARSE_PATHS[@]}"
+}
+
+clone_runtime_copy() {
+    local destination="$1"
+
+    git clone \
+        --branch main \
+        --single-branch \
+        --depth 1 \
+        --filter=blob:none \
+        --no-tags \
+        --sparse \
+        "$REPO_URL" "$destination"
+    configure_runtime_checkout "$destination"
+}
+
 install_fresh_copy() {
     local reason="${1:-An existing TrainUI folder was found.}"
     local install_stamp="$(date +%Y%m%d-%H%M%S).$$"
@@ -156,7 +189,7 @@ install_fresh_copy() {
     say "$reason"
     # Clone before moving the working installation. If GitHub is unavailable,
     # the currently installed copy remains exactly where it was.
-    git clone --branch main --single-branch "$REPO_URL" "$fresh_dir"
+    clone_runtime_copy "$fresh_dir"
     mv "$REPO_DIR" "$backup_dir"
     mv "$fresh_dir" "$REPO_DIR"
     say "The previous installation was preserved at $backup_dir"
@@ -177,23 +210,36 @@ if [ -d "$REPO_DIR/.git" ]; then
 
     if [ "$checkout_is_valid" != true ]; then
         install_fresh_copy "The existing Git checkout is damaged; reinstalling it."
-    elif ! git -C "$REPO_DIR" fetch --prune origin main; then
-        install_fresh_copy "The existing Git checkout could not be updated; reinstalling it."
     elif [ -n "$checkout_changes" ]; then
         install_fresh_copy "Local changes were found; reinstalling a clean copy."
     elif ! git -C "$REPO_DIR" show-ref --verify --quiet refs/heads/main; then
         install_fresh_copy "The existing checkout has no main branch; reinstalling it."
-    elif ! git -C "$REPO_DIR" merge-base --is-ancestor main origin/main; then
-        install_fresh_copy "The existing main branch has local commits; reinstalling a clean copy."
     else
-        git -C "$REPO_DIR" checkout -f main
-        git -C "$REPO_DIR" reset --hard origin/main
+        # Turn older full installations into lightweight partial clones before
+        # fetching. This makes this update—and every later update—skip the
+        # large CAD and documentation blobs.
+        git -C "$REPO_DIR" config remote.origin.promisor true
+        git -C "$REPO_DIR" config remote.origin.partialclonefilter blob:none
+
+        if ! git -C "$REPO_DIR" fetch \
+            --prune \
+            --no-tags \
+            --filter=blob:none \
+            origin main; then
+            install_fresh_copy "The existing Git checkout could not be updated; reinstalling it."
+        elif ! git -C "$REPO_DIR" merge-base --is-ancestor main origin/main; then
+            install_fresh_copy "The existing main branch has local commits; reinstalling a clean copy."
+        else
+            configure_runtime_checkout "$REPO_DIR"
+            git -C "$REPO_DIR" checkout -f main
+            git -C "$REPO_DIR" reset --hard origin/main
+        fi
     fi
 else
     if [ -e "$REPO_DIR" ]; then
         install_fresh_copy "A non-Git TrainUI folder was found; reinstalling a clean copy."
     else
-        git clone --branch main --single-branch "$REPO_URL" "$REPO_DIR"
+        clone_runtime_copy "$REPO_DIR"
     fi
 fi
 
@@ -316,6 +362,7 @@ fi
 
 python_imports_ok() {
     "$VENV_DIR/bin/python" -c '
+import tkinter
 import requests
 from google.transit import gtfs_realtime_pb2
 from PIL import Image, ImageTk
@@ -357,19 +404,16 @@ else
             "$wheel_file"
 
     rm -rf "$wheel_dir"
+
+    if ! python_imports_ok; then
+        fail "TrainUI's Python libraries could not be imported after installation."
+    fi
 fi
 
 say "Checking timertest.py and its libraries..."
 
 "$VENV_DIR/bin/python" -m py_compile "$MAIN_FILE"
-
-"$VENV_DIR/bin/python" -c '
-import tkinter
-import requests
-from google.transit import gtfs_realtime_pb2
-from PIL import Image, ImageTk
-print("All TrainUI imports passed.")
-'
+echo "All TrainUI imports passed."
 
 printf '%s\n' "$requirements_hash" > "$DEPENDENCY_STAMP"
 
@@ -603,17 +647,19 @@ EOF
 chmod +x "$RUNNER"
 
 say "Configuring optional daily display sleep..."
-if sudo test -f "$POWER_SCHEDULE_CONFIG"; then
+if [ -t 1 ] && [ -r /dev/tty ]; then
+    # Interactive updates can change the station and the sleep schedule in the
+    # same run. Existing times appear as defaults and can be kept with Enter.
+    sudo /usr/local/bin/trainui-schedule \
+        --initial \
+        --owner "$USER" \
+        --home "$HOME" </dev/tty
+elif sudo test -f "$POWER_SCHEDULE_CONFIG"; then
     sudo /usr/local/bin/trainui-schedule \
         --apply-existing \
         --owner "$USER" \
         --home "$HOME"
     echo "Keeping the existing daily display setting. Run trainui-schedule to change it."
-elif [ -t 1 ] && [ -r /dev/tty ]; then
-    sudo /usr/local/bin/trainui-schedule \
-        --initial \
-        --owner "$USER" \
-        --home "$HOME" </dev/tty
 else
     # A non-interactive install cannot safely guess the owner's desired times.
     sudo /usr/local/bin/trainui-schedule \
