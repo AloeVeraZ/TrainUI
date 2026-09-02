@@ -1,0 +1,10 @@
+[Unit]
+Description=Apply the current TrainUI display schedule at boot
+After=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/trainui-schedule --sync-state
+
+[Install]
+WantedBy=graphical.target

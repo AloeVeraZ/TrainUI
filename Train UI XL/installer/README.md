@@ -23,7 +23,7 @@
 curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/Train%20UI%20XL/installer/install.sh | bash
 ```
 
-Choose a train and station. The installer downloads Train UI, installs missing packages, sets up automatic startup, and reboots the Pi. Run the same command again to update or change the selection.
+Choose a train and station, then answer `Y/N` or `1/2` for daily display sleep. It uses 24-hour time: `2300` is 11:00 PM, `0800` is 8:00 AM, and `2400` is midnight. Run the same command again to update TrainUI.
 
 Your selection stays in `~/.config/trainui/config.json`. If an old checkout is damaged or changed, the installer saves it as `~/TrainUI.backup.*` before replacing it.
 
@@ -38,5 +38,13 @@ tail -n 100 "$HOME/TrainUI/Train UI XL/trainui.log"
 systemctl status trainui-wifi-setup.service
 sudo journalctl -u trainui-wifi-setup.service --since today
 ```
+
+Change or disable the daily schedule later with one command:
+
+```bash
+trainui-schedule
+```
+
+During scheduled sleep, TrainUI and the display turn off. The Pi stays powered so its timer can wake the display.
 
 If the setup menu cannot use the terminal, reconnect with SSH and run the command directly. Hardware and assembly instructions are in the [Train UI XL README](../README.md).

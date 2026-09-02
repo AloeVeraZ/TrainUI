@@ -11,6 +11,8 @@ AUTOSTART_DIR="$HOME/.config/autostart"
 LABWC_DIR="$HOME/.config/labwc"
 TRAINUI_CONFIG_DIR="$HOME/.config/trainui"
 TRAINUI_CONFIG_FILE="$TRAINUI_CONFIG_DIR/config.json"
+POWER_SCHEDULE_CONFIG="/etc/trainui/power-schedule.json"
+SCHEDULE_SLEEP_MARKER="/run/trainui/scheduled-sleep"
 LOG_FILE="$APP_DIR/trainui.log"
 DEPENDENCY_STAMP="$VENV_DIR/.trainui-requirements.sha256"
 GTFS_WHEEL_URL="https://files.pythonhosted.org/packages/b3/67/1f030547f94716b3259d99ad93467a6608703942bc62f35e43b1bb8bc2e9/gtfs_realtime_bindings-1.0.0-py3-none-any.whl"
@@ -253,6 +255,35 @@ sudo install -m 0644 \
     "$APP_DIR/installer/systemd/trainui-wifi-setup.service" \
     /etc/systemd/system/trainui-wifi-setup.service
 
+if [ ! -f "$APP_DIR/installer/power_schedule.py" ] || \
+   [ ! -f "$APP_DIR/installer/display-power.sh" ] || \
+   [ ! -f "$APP_DIR/installer/systemd/trainui-sleep.service" ] || \
+   [ ! -f "$APP_DIR/installer/systemd/trainui-sleep.timer" ] || \
+   [ ! -f "$APP_DIR/installer/systemd/trainui-wake.service" ] || \
+   [ ! -f "$APP_DIR/installer/systemd/trainui-wake.timer" ] || \
+   [ ! -f "$APP_DIR/installer/systemd/trainui-schedule-sync.service" ]; then
+    fail "The automatic display sleep files were not found in the GitHub repository."
+fi
+
+# These files are installed on every run so existing TrainUI installations
+# gain the feature without needing a fresh Raspberry Pi OS image.
+sudo install -m 0755 \
+    "$APP_DIR/installer/power_schedule.py" \
+    /usr/local/bin/trainui-schedule
+sudo install -m 0755 \
+    "$APP_DIR/installer/display-power.sh" \
+    /usr/local/sbin/trainui-display-power
+for schedule_unit in \
+    trainui-sleep.service \
+    trainui-sleep.timer \
+    trainui-wake.service \
+    trainui-wake.timer \
+    trainui-schedule-sync.service; do
+    sudo install -m 0644 \
+        "$APP_DIR/installer/systemd/$schedule_unit" \
+        "/etc/systemd/system/$schedule_unit"
+done
+
 sudo systemctl daemon-reload
 
 WIFI_SETUP_ENABLED=false
@@ -362,6 +393,7 @@ export PYTHONUNBUFFERED=1
 HEARTBEAT_FILE="\${XDG_RUNTIME_DIR:-/tmp}/trainui-\${UID}.heartbeat"
 HEARTBEAT_TIMEOUT_SECONDS=45
 MAX_RUNTIME_SECONDS=86400
+SCHEDULE_SLEEP_MARKER="$SCHEDULE_SLEEP_MARKER"
 export TRAINUI_HEARTBEAT_FILE="\$HEARTBEAT_FILE"
 
 mkdir -p "\$APP_DIR"
@@ -431,6 +463,11 @@ PY
 
 keep_display_awake() {
     while true; do
+        if [ -e "\$SCHEDULE_SLEEP_MARKER" ]; then
+            sleep 2
+            continue
+        fi
+
         # X11: disable the screensaver and DPMS, then wake the display.
         if command -v xset >/dev/null 2>&1; then
             xset s off >/dev/null 2>&1 || true
@@ -457,13 +494,26 @@ keep_display_awake() {
     done
 }
 
-cd "\$APP_DIR"
-rotate_display
-wait_for_mta
+keep_scheduled_display_off() {
+    if command -v wlr-randr >/dev/null 2>&1; then
+        wlr-randr 2>/dev/null |
+            awk '/^[^[:space:]]/ {print \$1}' |
+            while IFS= read -r display_output; do
+                [ -n "\$display_output" ] || continue
+                wlr-randr --output "\$display_output" --off \
+                    >> "\$LOG_FILE" 2>&1 || true
+            done
+    fi
+    if command -v xset >/dev/null 2>&1; then
+        xset dpms force off >/dev/null 2>&1 || true
+    fi
+}
 
+cd "\$APP_DIR"
 keep_display_awake &
 display_watchdog_pid=\$!
 app_pid=""
+startup_ready=false
 
 stop_app() {
     [ -n "\$app_pid" ] || return 0
@@ -489,6 +539,18 @@ trap 'exit 0' INT TERM
 # Python process. A stopped clock, crash, or once-daily maintenance recycle all
 # recover here without rebooting or waiting for another login.
 while true; do
+    while [ -e "\$SCHEDULE_SLEEP_MARKER" ]; do
+        rm -f "\$HEARTBEAT_FILE"
+        keep_scheduled_display_off
+        sleep 2
+    done
+
+    if [ "\$startup_ready" = false ]; then
+        rotate_display
+        wait_for_mta
+        startup_ready=true
+    fi
+
     rm -f "\$HEARTBEAT_FILE"
     app_started_at="\$(date +%s)"
     restart_reason="TrainUI exited"
@@ -498,7 +560,14 @@ while true; do
     echo "TrainUI process \$app_pid started." >> "\$LOG_FILE"
 
     while kill -0 "\$app_pid" 2>/dev/null; do
-        sleep 10
+        sleep 2
+
+        if [ -e "\$SCHEDULE_SLEEP_MARKER" ]; then
+            restart_reason="Scheduled display sleep"
+            stop_app
+            break
+        fi
+
         now="\$(date +%s)"
         heartbeat_at="\$app_started_at"
         if [ -e "\$HEARTBEAT_FILE" ]; then
@@ -532,6 +601,26 @@ done
 EOF
 
 chmod +x "$RUNNER"
+
+say "Configuring optional daily display sleep..."
+if sudo test -f "$POWER_SCHEDULE_CONFIG"; then
+    sudo /usr/local/bin/trainui-schedule \
+        --apply-existing \
+        --owner "$USER" \
+        --home "$HOME"
+    echo "Keeping the existing daily display setting. Run trainui-schedule to change it."
+elif [ -t 1 ] && [ -r /dev/tty ]; then
+    sudo /usr/local/bin/trainui-schedule \
+        --initial \
+        --owner "$USER" \
+        --home "$HOME" </dev/tty
+else
+    # A non-interactive install cannot safely guess the owner's desired times.
+    sudo /usr/local/bin/trainui-schedule \
+        --disable \
+        --owner "$USER" \
+        --home "$HOME"
+fi
 
 say "Enabling automatic TrainUI startup..."
 
@@ -636,6 +725,7 @@ else
     echo "Legacy Wi-Fi reliability checks run every 30 seconds."
 fi
 echo "Desktop, console, X11, Wayland, and system sleep blanking are disabled."
+echo "Daily display sleep: run trainui-schedule to enable, disable, or change it."
 echo "Runtime log: $LOG_FILE"
 
 sync

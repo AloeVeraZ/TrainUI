@@ -8,6 +8,7 @@ TRAINUI_STATE_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/trainui"
 TRAINUI_LOG_FILE="$TRAINUI_STATE_DIR/trainui.log"
 TRAINUI_LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/trainui-${UID}.lock"
 TRAINUI_HEARTBEAT_FILE="${XDG_RUNTIME_DIR:-/tmp}/trainui-${UID}.heartbeat"
+TRAINUI_SCHEDULE_SLEEP_MARKER="/run/trainui/scheduled-sleep"
 HEARTBEAT_TIMEOUT_SECONDS=45
 MAX_RUNTIME_SECONDS=86400
 export TRAINUI_HEARTBEAT_FILE
@@ -49,6 +50,11 @@ hide_pointer() {
 
 keep_display_awake() {
     while true; do
+        if [ -e "$TRAINUI_SCHEDULE_SLEEP_MARKER" ]; then
+            sleep 2
+            continue
+        fi
+
         if command -v xset >/dev/null 2>&1; then
             xset s off >/dev/null 2>&1 || true
             xset s noblank >/dev/null 2>&1 || true
@@ -69,12 +75,26 @@ keep_display_awake() {
     done
 }
 
+keep_scheduled_display_off() {
+    if command -v wlr-randr >/dev/null 2>&1; then
+        wlr-randr 2>/dev/null | awk '/^[^[:space:]]/ {print $1}' |
+            while IFS= read -r display_output; do
+                [ -n "$display_output" ] || continue
+                wlr-randr --output "$display_output" --off \
+                    >>"$TRAINUI_LOG_FILE" 2>&1 || true
+            done
+    fi
+    if command -v xset >/dev/null 2>&1; then
+        xset dpms force off >/dev/null 2>&1 || true
+    fi
+}
+
 printf '\n===== TrainUI startup: %s =====\n' "$(date)" >>"$TRAINUI_LOG_FILE"
-rotate_display
 hide_pointer
 keep_display_awake &
 TRAINUI_DISPLAY_WATCHDOG_PID=$!
 TRAINUI_APP_PID=""
+TRAINUI_STARTUP_READY=false
 
 stop_app() {
     [ -n "$TRAINUI_APP_PID" ] || return 0
@@ -98,6 +118,17 @@ trap 'exit 0' INT TERM
 
 cd /opt/trainui
 while true; do
+    while [ -e "$TRAINUI_SCHEDULE_SLEEP_MARKER" ]; do
+        rm -f "$TRAINUI_HEARTBEAT_FILE"
+        keep_scheduled_display_off
+        sleep 2
+    done
+
+    if [ "$TRAINUI_STARTUP_READY" = false ]; then
+        rotate_display
+        TRAINUI_STARTUP_READY=true
+    fi
+
     rm -f "$TRAINUI_HEARTBEAT_FILE"
     app_started_at="$(date +%s)"
     restart_reason="TrainUI exited"
@@ -108,7 +139,14 @@ while true; do
     echo "TrainUI process $TRAINUI_APP_PID started." >>"$TRAINUI_LOG_FILE"
 
     while kill -0 "$TRAINUI_APP_PID" 2>/dev/null; do
-        sleep 10
+        sleep 2
+
+        if [ -e "$TRAINUI_SCHEDULE_SLEEP_MARKER" ]; then
+            restart_reason="Scheduled display sleep"
+            stop_app
+            break
+        fi
+
         now="$(date +%s)"
         heartbeat_at="$app_started_at"
         if [ -e "$TRAINUI_HEARTBEAT_FILE" ]; then

@@ -117,7 +117,7 @@ The [step-by-step assembly guide](Assembly%20Guide/) covers the faceplate, scree
 curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/Train%20UI%20XL/installer/install.sh | bash
 ```
 
-Choose a train and station. The installer sets the 270-degree display, automatic startup, and Wi-Fi recovery, then reboots.
+Choose a train and station, then choose whether the display should sleep on a daily schedule. Times use the Pi's local time and the 24-hour clock: `2300` is 11:00 PM, `0800` is 8:00 AM, and `2400` is midnight. The installer then sets automatic startup and Wi-Fi recovery and reboots.
 
 If the Pi stays offline for 30 seconds, join **TrainUI** with password **TRAINUI1** and open `http://10.42.0.1`. The screen shows these setup details only while the hotspot is active.
 
@@ -138,6 +138,9 @@ tail -f "$HOME/TrainUI/Train UI XL/trainui.log"
 # Check Wi-Fi setup
 systemctl status trainui-wifi-setup.service
 sudo journalctl -u trainui-wifi-setup.service --since today
+
+# Change or disable the daily display sleep schedule
+trainui-schedule
 ```
 
 ## Quick fixes

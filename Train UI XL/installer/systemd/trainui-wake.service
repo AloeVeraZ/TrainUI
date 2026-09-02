@@ -1,0 +1,8 @@
+[Unit]
+Description=Turn on the display and resume TrainUI
+After=display-manager.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/trainui/power-schedule.env
+ExecStart=/usr/local/sbin/trainui-display-power wake

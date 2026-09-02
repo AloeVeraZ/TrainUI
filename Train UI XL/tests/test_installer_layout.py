@@ -119,9 +119,16 @@ class InstallerLayoutTests(unittest.TestCase):
             APP_ROOT / "installer" / "subway_catalog.json",
             APP_ROOT / "installer" / "connectivity-watchdog.sh",
             APP_ROOT / "installer" / "wifi_setup.py",
+            APP_ROOT / "installer" / "power_schedule.py",
+            APP_ROOT / "installer" / "display-power.sh",
             APP_ROOT / "installer" / "systemd" / "trainui-connectivity.service",
             APP_ROOT / "installer" / "systemd" / "trainui-connectivity.timer",
             APP_ROOT / "installer" / "systemd" / "trainui-wifi-setup.service",
+            APP_ROOT / "installer" / "systemd" / "trainui-sleep.service",
+            APP_ROOT / "installer" / "systemd" / "trainui-sleep.timer",
+            APP_ROOT / "installer" / "systemd" / "trainui-wake.service",
+            APP_ROOT / "installer" / "systemd" / "trainui-wake.timer",
+            APP_ROOT / "installer" / "systemd" / "trainui-schedule-sync.service",
             RUNTIME_WATCHDOG_PATH,
         )
         for path in expected_paths:
@@ -290,6 +297,24 @@ class InstallerLayoutTests(unittest.TestCase):
         self.assertIn("trainui-wifi-setup.service", self.image_build)
         self.assertIn("trainui-wifi-setup", self.image_stage)
         self.assertIn("enable trainui-wifi-setup.service", self.image_stage)
+
+    def test_daily_display_schedule_is_installer_and_image_compatible(self):
+        for expected in (
+            "trainui-schedule",
+            "trainui-display-power",
+            "trainui-sleep.timer",
+            "trainui-wake.timer",
+            "trainui-schedule-sync.service",
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, self.installer)
+                self.assertIn(expected, self.image_stage)
+        self.assertIn("--apply-existing", self.installer)
+        self.assertIn("--initial", self.installer)
+        self.assertIn("/run/trainui/scheduled-sleep", self.installer)
+        self.assertIn("/run/trainui/scheduled-sleep", self.image_launcher)
+        self.assertIn("Scheduled display sleep", self.installer)
+        self.assertIn("Scheduled display sleep", self.image_launcher)
 
     def test_public_command_points_directly_to_xl_installer(self):
         self.assertGreaterEqual(self.readme.count(PUBLIC_INSTALL_COMMAND), 2)

@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily TrainUI display wake timer
+
+[Timer]
+OnCalendar=*-*-* 08:00:00
+AccuracySec=1min
+Unit=trainui-wake.service
+
+[Install]
+WantedBy=timers.target
