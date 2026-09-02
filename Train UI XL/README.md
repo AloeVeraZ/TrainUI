@@ -147,6 +147,8 @@ sudo journalctl -u trainui-wifi-setup.service --since today
 
 ```
 
+Scheduled sleep powers down only the display. The desktop stays logged in and TrainUI keeps running, so wake time returns directly to the dashboard instead of a login screen.
+
 ## Quick fixes
 
 | Problem | Check |

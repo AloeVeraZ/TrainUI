@@ -45,6 +45,6 @@ Change or disable the daily schedule later with one command:
 trainui-schedule
 ```
 
-During scheduled sleep, TrainUI and the display turn off. The Pi stays powered so its timer can wake the display.
+During scheduled sleep, only the display powers down. TrainUI and the logged-in desktop stay running, so the display wakes straight back into TrainUI without a login screen.
 
 If the setup menu cannot use the terminal, reconnect with SSH and run the command directly. Hardware and assembly instructions are in the [Train UI XL README](../README.md).

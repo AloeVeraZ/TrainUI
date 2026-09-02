@@ -3,7 +3,8 @@ set -u
 
 ACTION="${1:-}"
 STATE_DIR="/run/trainui"
-SLEEP_MARKER="$STATE_DIR/scheduled-sleep"
+SLEEP_MARKER="$STATE_DIR/display-sleep-v2"
+LEGACY_SLEEP_MARKER="$STATE_DIR/scheduled-sleep"
 TRAINUI_USER="${TRAINUI_USER:-pi}"
 TRAINUI_HOME="${TRAINUI_HOME:-/home/$TRAINUI_USER}"
 
@@ -36,63 +37,73 @@ run_x11() {
         "$@"
 }
 
-wayland_outputs() {
-    run_wayland wlr-randr 2>/dev/null | awk '/^[^[:space:]]/ {print $1}'
-}
-
-x11_outputs() {
-    run_x11 xrandr --query 2>/dev/null | awk '/ connected/{print $1}'
+restore_legacy_disabled_outputs() {
+    # Older TrainUI releases disabled the compositor output with wlr-randr.
+    # Re-enable that state once during wake so this update can recover a Pi
+    # that was already asleep when the new script was installed.
+    command -v wlr-randr >/dev/null 2>&1 || return 0
+    run_wayland wlr-randr 2>/dev/null | awk '
+        /^[^[:space:]]/ { output=$1 }
+        /Enabled: no/ && output != "" { print output }
+    ' | while IFS= read -r output; do
+        [ -n "$output" ] || continue
+        run_wayland wlr-randr --output "$output" --on --transform 270 \
+            >/dev/null 2>&1 || true
+    done
 }
 
 mkdir -p "$STATE_DIR"
 
 if [ "$ACTION" = "sleep" ]; then
+    # Do not wake the old launcher's output-disabling sleep loop during an
+    # in-place upgrade. The v2 marker is understood by the updated launcher
+    # and ignored safely by an already-running older launcher.
+    rm -f "$LEGACY_SLEEP_MARKER"
     touch "$SLEEP_MARKER"
 
-    # The launcher sees the marker and will not restart TrainUI until wake time.
-    if [ -n "$TRAINUI_UID" ]; then
-        pkill -TERM -u "$TRAINUI_UID" -f '/timertest[.]py([[:space:]]|$)' \
-            2>/dev/null || true
+    # Power-manage the monitor without disabling the compositor output or
+    # stopping TrainUI. Disabling the only output can tear down the desktop
+    # session and expose the login screen when it comes back.
+    if command -v wlopm >/dev/null 2>&1 && \
+       run_wayland wlopm --off '*' >/dev/null 2>&1; then
+        exit 0
+    fi
+    if command -v xset >/dev/null 2>&1 && \
+       run_x11 xset dpms force off >/dev/null 2>&1; then
+        # An already-running pre-v2 X11 launcher needs its old marker so its
+        # display watchdog does not immediately force DPMS back on. Its X11
+        # sleep path does not end the desktop session.
+        touch "$LEGACY_SLEEP_MARKER"
+        exit 0
+    fi
+    if command -v vcgencmd >/dev/null 2>&1 && \
+       vcgencmd display_power 0 >/dev/null 2>&1; then
+        exit 0
     fi
 
-    if command -v wlr-randr >/dev/null 2>&1; then
-        while IFS= read -r output; do
-            [ -n "$output" ] || continue
-            run_wayland wlr-randr --output "$output" --off >/dev/null 2>&1 || true
-        done < <(wayland_outputs)
-    fi
-    if command -v xset >/dev/null 2>&1; then
-        run_x11 xset dpms force off >/dev/null 2>&1 || true
-    fi
-    if command -v xrandr >/dev/null 2>&1; then
-        while IFS= read -r output; do
-            [ -n "$output" ] || continue
-            run_x11 xrandr --output "$output" --off >/dev/null 2>&1 || true
-        done < <(x11_outputs)
-    fi
-    command -v vcgencmd >/dev/null 2>&1 && \
-        vcgencmd display_power 0 >/dev/null 2>&1 || true
+    echo "TrainUI could not power off the display without ending the desktop session." >&2
+    rm -f "$SLEEP_MARKER" "$LEGACY_SLEEP_MARKER"
+    exit 1
 else
-    # Clear the marker first so the launcher cannot race this wake-up by
-    # issuing another display-off command while the output is coming back.
-    rm -f "$SLEEP_MARKER"
-    command -v vcgencmd >/dev/null 2>&1 && \
-        vcgencmd display_power 1 >/dev/null 2>&1 || true
-    if command -v wlr-randr >/dev/null 2>&1; then
-        while IFS= read -r output; do
-            [ -n "$output" ] || continue
-            run_wayland wlr-randr --output "$output" --on --transform 270 \
-                >/dev/null 2>&1 || true
-        done < <(wayland_outputs)
+    # Clear the marker first so the display watchdog cannot race the wake-up.
+    rm -f "$SLEEP_MARKER" "$LEGACY_SLEEP_MARKER"
+    woke_display=false
+    if command -v wlopm >/dev/null 2>&1 && \
+       run_wayland wlopm --on '*' >/dev/null 2>&1; then
+        woke_display=true
     fi
-    if command -v xrandr >/dev/null 2>&1; then
-        while IFS= read -r output; do
-            [ -n "$output" ] || continue
-            run_x11 xrandr --output "$output" --auto --rotate left \
-                >/dev/null 2>&1 || true
-        done < <(x11_outputs)
+    if command -v xset >/dev/null 2>&1 && \
+       run_x11 xset dpms force on >/dev/null 2>&1; then
+        woke_display=true
     fi
-    if command -v xset >/dev/null 2>&1; then
-        run_x11 xset dpms force on >/dev/null 2>&1 || true
+    if command -v vcgencmd >/dev/null 2>&1 && \
+       vcgencmd display_power 1 >/dev/null 2>&1; then
+        woke_display=true
+    fi
+
+    restore_legacy_disabled_outputs
+    if [ "$woke_display" != true ]; then
+        echo "TrainUI could not wake the display through Wayland, X11, or firmware." >&2
+        exit 1
     fi
 fi

@@ -1,5 +1,5 @@
 [Unit]
-Description=Turn on the display and resume TrainUI
+Description=Turn the TrainUI display back on
 After=display-manager.service
 
 [Service]

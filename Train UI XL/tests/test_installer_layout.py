@@ -10,6 +10,7 @@ REPOSITORY_README_PATH = REPOSITORY_ROOT / "README.md"
 INSTALLER_PATH = APP_ROOT / "installer" / "install.sh"
 README_PATH = APP_ROOT / "README.md"
 INSTALLER_README_PATH = APP_ROOT / "installer" / "README.md"
+DISPLAY_POWER_PATH = APP_ROOT / "installer" / "display-power.sh"
 REQUIREMENTS_PATH = APP_ROOT / "requirements.txt"
 IMAGE_LAUNCHER_PATH = (
     APP_ROOT / "image" / "stage-trainui" / "00-trainui" / "files" /
@@ -68,6 +69,7 @@ class InstallerLayoutTests(unittest.TestCase):
         cls.installer = INSTALLER_PATH.read_text(encoding="utf-8")
         cls.readme = README_PATH.read_text(encoding="utf-8")
         cls.installer_readme = INSTALLER_README_PATH.read_text(encoding="utf-8")
+        cls.display_power = DISPLAY_POWER_PATH.read_text(encoding="utf-8")
         cls.requirements = REQUIREMENTS_PATH.read_text(encoding="utf-8")
         cls.image_launcher = IMAGE_LAUNCHER_PATH.read_text(encoding="utf-8")
         cls.image_build = IMAGE_BUILD_PATH.read_text(encoding="utf-8")
@@ -142,6 +144,17 @@ class InstallerLayoutTests(unittest.TestCase):
         self.assertIn('Pillow>=9.4,<13', self.requirements)
         self.assertIn('protobuf>=3.21,<7', self.requirements)
         self.assertIn('requests>=2.28,<3', self.requirements)
+
+    def test_wayland_display_power_tool_is_available_in_both_install_paths(self):
+        self.assertRegex(self.installer, r"(?m)^    wlopm$")
+        image_packages = (
+            APP_ROOT
+            / "image"
+            / "stage-trainui"
+            / "00-trainui"
+            / "00-packages"
+        ).read_text(encoding="utf-8")
+        self.assertRegex(image_packages, r"(?m)^wlopm$")
 
     def test_expected_xl_files_exist_at_installer_runtime_locations(self):
         expected_paths = (
@@ -342,10 +355,19 @@ class InstallerLayoutTests(unittest.TestCase):
                 self.assertIn(expected, self.installer)
                 self.assertIn(expected, self.image_stage)
         self.assertIn("--initial", self.installer)
-        self.assertIn("/run/trainui/scheduled-sleep", self.installer)
-        self.assertIn("/run/trainui/scheduled-sleep", self.image_launcher)
-        self.assertIn("Scheduled display sleep", self.installer)
-        self.assertIn("Scheduled display sleep", self.image_launcher)
+        self.assertIn("/run/trainui/display-sleep-v2", self.installer)
+        self.assertIn("/run/trainui/display-sleep-v2", self.image_launcher)
+        self.assertIn('LEGACY_SLEEP_MARKER="$STATE_DIR/scheduled-sleep"', self.display_power)
+        self.assertIn('touch "$LEGACY_SLEEP_MARKER"', self.display_power)
+        self.assertIn("wlopm --off '*'", self.display_power)
+        self.assertIn("wlopm --on '*'", self.display_power)
+        self.assertNotIn('wlr-randr --output "$output" --off', self.display_power)
+        self.assertNotIn("pkill", self.display_power)
+        self.assertNotIn('restart_reason="Scheduled display sleep"', self.installer)
+        self.assertNotIn(
+            'restart_reason="Scheduled display sleep"', self.image_launcher
+        )
+        self.assertIn("desktop stays logged in", self.readme)
         self.assertLess(
             self.installer.index('if [ -t 1 ] && [ -r /dev/tty ]; then',
                                  self.installer.index('say "Configuring optional daily display sleep..."')),

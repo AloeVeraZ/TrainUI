@@ -10,6 +10,7 @@ python3-tk
 python3-venv
 rfkill
 unclutter
+wlopm
 wlr-randr
 x11-xserver-utils
 

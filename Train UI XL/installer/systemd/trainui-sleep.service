@@ -1,5 +1,5 @@
 [Unit]
-Description=Pause TrainUI and turn off the display
+Description=Power off the TrainUI display without ending the desktop session
 After=display-manager.service
 
 [Service]

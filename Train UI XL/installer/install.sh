@@ -12,7 +12,7 @@ LABWC_DIR="$HOME/.config/labwc"
 TRAINUI_CONFIG_DIR="$HOME/.config/trainui"
 TRAINUI_CONFIG_FILE="$TRAINUI_CONFIG_DIR/config.json"
 POWER_SCHEDULE_CONFIG="/etc/trainui/power-schedule.json"
-SCHEDULE_SLEEP_MARKER="/run/trainui/scheduled-sleep"
+SCHEDULE_SLEEP_MARKER="/run/trainui/display-sleep-v2"
 LOG_FILE="$APP_DIR/trainui.log"
 DEPENDENCY_STAMP="$VENV_DIR/.trainui-requirements.sha256"
 MAIN_SOURCE_STAMP="$VENV_DIR/.trainui-main.sha256"
@@ -144,6 +144,7 @@ SYSTEM_PACKAGES=(
     fonts-dejavu-core
     iw
     rfkill
+    wlopm
     wlr-randr
     x11-xserver-utils
 )
@@ -628,21 +629,6 @@ keep_display_awake() {
     done
 }
 
-keep_scheduled_display_off() {
-    if command -v wlr-randr >/dev/null 2>&1; then
-        wlr-randr 2>/dev/null |
-            awk '/^[^[:space:]]/ {print \$1}' |
-            while IFS= read -r display_output; do
-                [ -n "\$display_output" ] || continue
-                wlr-randr --output "\$display_output" --off \
-                    >> "\$LOG_FILE" 2>&1 || true
-            done
-    fi
-    if command -v xset >/dev/null 2>&1; then
-        xset dpms force off >/dev/null 2>&1 || true
-    fi
-}
-
 cd "\$APP_DIR"
 keep_display_awake &
 display_watchdog_pid=\$!
@@ -673,12 +659,6 @@ trap 'exit 0' INT TERM
 # Python process. A stopped clock, crash, or once-daily maintenance recycle all
 # recover here without rebooting or waiting for another login.
 while true; do
-    while [ -e "\$SCHEDULE_SLEEP_MARKER" ]; do
-        rm -f "\$HEARTBEAT_FILE"
-        keep_scheduled_display_off
-        sleep 2
-    done
-
     if [ "\$startup_ready" = false ]; then
         rotate_display
         wait_for_mta
@@ -695,12 +675,6 @@ while true; do
 
     while kill -0 "\$app_pid" 2>/dev/null; do
         sleep 2
-
-        if [ -e "\$SCHEDULE_SLEEP_MARKER" ]; then
-            restart_reason="Scheduled display sleep"
-            stop_app
-            break
-        fi
 
         now="\$(date +%s)"
         heartbeat_at="\$app_started_at"
