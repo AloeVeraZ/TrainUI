@@ -8,8 +8,10 @@ Trackside layout can be maintained separately from the main display.
 
 ## What is different
 
-- The clock and date are doubled for viewing across a room.
-- Departure numbers and their `MIN` labels are doubled.
+- The clock and date are enlarged for viewing across a room, with responsive
+  sizing so the full weekday and month remain readable.
+- Departure numbers and their `MIN` labels are enlarged to the largest size
+  that fits each portrait card without clipping.
 - The service-change panel is replaced by a five-day weather forecast.
 - System health is compact and stays at the bottom with only CPU temperature,
   uptime, IP address, and Wi-Fi connection.

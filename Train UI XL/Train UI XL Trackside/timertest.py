@@ -129,12 +129,12 @@ SYSTEM_STAT_FONT_SIZE = 10
 SYSTEM_STAT_GAP = 1
 
 # Trackside is designed to be read across a room.
-TRACKSIDE_CLOCK_SIZE = 100
-TRACKSIDE_DATE_SIZE = 32
-TRACKSIDE_PRIMARY_TIME_SIZE = 76
-TRACKSIDE_SECONDARY_TIME_SIZE = 48
-TRACKSIDE_PRIMARY_UNIT_SIZE = 76
-TRACKSIDE_SECONDARY_UNIT_SIZE = 48
+TRACKSIDE_CLOCK_SIZE = 82
+TRACKSIDE_DATE_SIZE = 20
+TRACKSIDE_PRIMARY_TIME_SIZE = 56
+TRACKSIDE_SECONDARY_TIME_SIZE = 34
+TRACKSIDE_PRIMARY_UNIT_SIZE = 56
+TRACKSIDE_SECONDARY_UNIT_SIZE = 34
 TRACKSIDE_SYSTEM_FONT_SIZE = 10
 
 
@@ -150,6 +150,16 @@ def weather_text(code):
              95: "Thunderstorms", 96: "Thunderstorms with hail",
              99: "Severe thunderstorms with hail"}
     return names.get(code, "Conditions unavailable")
+
+
+def format_long_date(value):
+    """Return a readable date with an ordinal day (for example, September 4th)."""
+    day = value.day
+    if 10 <= day % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+    return f"{value.strftime('%A')} - {value.strftime('%B')} {day}{suffix}"
 
 
 def interpolate_color(color1_hex, color2_hex, factor):
@@ -527,7 +537,12 @@ class Dashboard(tk.Tk):
         self.clock_mins = self.label(clock_frame, "--", TRACKSIDE_CLOCK_SIZE, WHITE, "bold")
         self.clock_mins.pack(side="left")
 
-        self.date = self.label(hero_left, "", TRACKSIDE_DATE_SIZE, MUTED, "bold")
+        date_width = max(180, self.winfo_screenwidth() // 2 - 36)
+        date_size = self.fitted_font_size(
+            "Wednesday - September 30th", date_width,
+            TRACKSIDE_DATE_SIZE, 14,
+        )
+        self.date = self.label(hero_left, "", date_size, MUTED, "bold")
         self.date.pack(anchor="w")
 
         hero_right = tk.Frame(hero, bg=GLASS_CARD)
@@ -667,18 +682,28 @@ class Dashboard(tk.Tk):
         timetable = tk.Frame(frame, bg=GLASS_CARD)
         timetable.pack(fill="both", expand=True, padx=14, pady=(2, 8))
 
-        next_time = self.label(timetable, "--", TRACKSIDE_PRIMARY_TIME_SIZE, CYAN, "bold", width=3, anchor="w")
+        available_width = max(180, self.winfo_screenwidth() // 2 - 44)
+        primary_size = self.fitted_font_size(
+            "DUE MIN", available_width - 12,
+            TRACKSIDE_PRIMARY_TIME_SIZE, 32,
+        )
+        secondary_size = self.fitted_font_size(
+            "000 MIN", available_width - 12,
+            TRACKSIDE_SECONDARY_TIME_SIZE, 22,
+        )
+
+        next_time = self.label(timetable, "--", primary_size, CYAN, "bold", width=3, anchor="w")
         next_time.grid(row=0, column=0, sticky="w")
-        next_unit = self.label(timetable, "MIN", TRACKSIDE_PRIMARY_UNIT_SIZE, CYAN, "bold")
+        next_unit = self.label(timetable, "MIN", primary_size, CYAN, "bold")
         next_unit.grid(row=0, column=1, sticky="w", padx=(12, 0), pady=(10, 0))
 
-        second = self.label(timetable, "--", TRACKSIDE_SECONDARY_TIME_SIZE, MUTED, "bold", width=3, anchor="w")
+        second = self.label(timetable, "--", secondary_size, MUTED, "bold", width=3, anchor="w")
         second.grid(row=1, column=0, sticky="w")
-        self.label(timetable, "MIN", TRACKSIDE_SECONDARY_UNIT_SIZE, MUTED, "bold").grid(row=1, column=1, sticky="w", padx=(12, 0), pady=(2, 0))
+        self.label(timetable, "MIN", secondary_size, MUTED, "bold").grid(row=1, column=1, sticky="w", padx=(12, 0), pady=(2, 0))
 
-        third = self.label(timetable, "--", TRACKSIDE_SECONDARY_TIME_SIZE, MUTED, "bold", width=3, anchor="w")
+        third = self.label(timetable, "--", secondary_size, MUTED, "bold", width=3, anchor="w")
         third.grid(row=2, column=0, sticky="w")
-        self.label(timetable, "MIN", TRACKSIDE_SECONDARY_UNIT_SIZE, MUTED, "bold").grid(row=2, column=1, sticky="w", padx=(12, 0), pady=(2, 0))
+        self.label(timetable, "MIN", secondary_size, MUTED, "bold").grid(row=2, column=1, sticky="w", padx=(12, 0), pady=(2, 0))
 
         return {
             "next": next_time,
@@ -760,7 +785,7 @@ class Dashboard(tk.Tk):
         clock_values = (
             now.strftime("%I").lstrip("0"),
             now.strftime("%M"),
-            now.strftime("%A - %B %-d"),
+            format_long_date(now),
         )
         if getattr(self, "_clock_values", None) != clock_values:
             self._clock_values = clock_values

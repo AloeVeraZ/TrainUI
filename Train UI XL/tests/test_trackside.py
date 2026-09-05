@@ -29,11 +29,11 @@ class TracksideLayoutTests(unittest.TestCase):
             self.assertTrue((TRACKSIDE_ROOT / relative_path).is_file())
 
     def test_trackside_has_large_readable_layout_and_no_service_panel(self):
-        self.assertIn("TRACKSIDE_CLOCK_SIZE = 100", self.app)
-        self.assertIn("TRACKSIDE_PRIMARY_TIME_SIZE = 76", self.app)
-        self.assertIn("TRACKSIDE_PRIMARY_UNIT_SIZE = 76", self.app)
-        self.assertIn("TRACKSIDE_SECONDARY_TIME_SIZE = 48", self.app)
-        self.assertIn("TRACKSIDE_SECONDARY_UNIT_SIZE = 48", self.app)
+        self.assertIn("TRACKSIDE_CLOCK_SIZE = 82", self.app)
+        self.assertIn("TRACKSIDE_PRIMARY_TIME_SIZE = 56", self.app)
+        self.assertIn("TRACKSIDE_PRIMARY_UNIT_SIZE = 56", self.app)
+        self.assertIn("TRACKSIDE_SECONDARY_TIME_SIZE = 34", self.app)
+        self.assertIn("TRACKSIDE_SECONDARY_UNIT_SIZE = 34", self.app)
         self.assertNotIn("self.status_card", self.app)
         self.assertNotIn("self.ticker_canvas", self.app)
         self.assertNotIn("self.ram_label", self.app)
