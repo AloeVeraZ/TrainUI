@@ -43,7 +43,7 @@ TEST_CONFIG = {
 
 
 def load_trainui_config():
-    path = Path(os.environ.get("TRAINUI_CONFIG", "~/.config/trainui/config.json")).expanduser()
+    path = Path(os.environ.get("TRAINUI_CONFIG", "~/.config/trainui-trackside/config.json")).expanduser()
     try:
         config = json.loads(path.read_text(encoding="utf-8"))
         required = (
@@ -86,29 +86,23 @@ SOUTH_DIRECTION_LABEL = TRAINUI_CONFIG["directions"]["S"]["label"]
 LATITUDE, LONGITUDE = 40.5749, -73.9859
 
 TRAIN_URL = TRAINUI_CONFIG["feed_url"]
-ALERT_URL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fall-alerts"
 WEATHER_URL = (
     "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s"
-    "&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m"
-    "&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%%2FNew_York"
+    "&daily=weather_code,temperature_2m_max,temperature_2m_min"
+    "&forecast_days=5"
+    "&temperature_unit=fahrenheit&timezone=America%%2FNew_York"
     % (LATITUDE, LONGITUDE)
 )
 TRAIN_REFRESH_MS = 30_000
 WEATHER_REFRESH_MS = 10 * 60_000
-STATUS_REFRESH_MS = 5 * 60_000
 SYSTEM_REFRESH_MS = 5_000
-TICKER_FRAME_MS = 16
 NETWORK_IDENTITY_REFRESH_SECONDS = 60
 HEARTBEAT_INTERVAL_SECONDS = 5
-# The reference LED display moves at about 200 px/s at 1280x720. The requested
-# 1.5x pace is therefore approximately 300 px/s.
-TICKER_SPEED_PX_PER_SECOND = 300.0
-TICKER_MAX_FRAME_SECONDS = 0.05
 
-WIFI_SETUP_SSID = "TrainUI"
+WIFI_SETUP_SSID = "TrainUI Trackside"
 WIFI_SETUP_PASSWORD = "TRAINUI1"
 WIFI_SETUP_URL = "http://10.42.0.1"
-WIFI_SETUP_PROFILE = "TrainUI-Setup"
+WIFI_SETUP_PROFILE = "TrainUI-Trackside-Setup"
 
 # ---- Palette & Geometry Constants ---------------------------------------
 BG = "#030914"
@@ -133,9 +127,15 @@ GAP = 12
 SYSTEM_PANEL_PADDING_Y = 10
 SYSTEM_STAT_FONT_SIZE = 10
 SYSTEM_STAT_GAP = 1
-SERVICE_TITLE_GAP = 8
-SERVICE_MESSAGE_GAP = 12
-TICKER_MIN_HEIGHT = 42
+
+# Trackside is designed to be read across a room.
+TRACKSIDE_CLOCK_SIZE = 100
+TRACKSIDE_DATE_SIZE = 32
+TRACKSIDE_PRIMARY_TIME_SIZE = 76
+TRACKSIDE_SECONDARY_TIME_SIZE = 48
+TRACKSIDE_PRIMARY_UNIT_SIZE = 76
+TRACKSIDE_SECONDARY_UNIT_SIZE = 48
+TRACKSIDE_SYSTEM_FONT_SIZE = 10
 
 
 def weather_text(code):
@@ -166,15 +166,6 @@ def interpolate_color(color1_hex, color2_hex, factor):
 def truncate(text, max_len=24):
     """Safely truncate strings to prevent text clipping on screen edges."""
     return text if len(text) <= max_len else text[:max_len - 3] + "..."
-
-
-def advance_ticker(position, cycle_width, elapsed_seconds,
-                   speed=TICKER_SPEED_PX_PER_SECOND):
-    """Advance a continuous marquee using elapsed time instead of frame count."""
-    if cycle_width <= 0:
-        return 0.0
-    distance = max(0.0, elapsed_seconds) * speed
-    return -((-position + distance) % cycle_width)
 
 
 def get_ip_address():
@@ -373,14 +364,7 @@ class Dashboard(tk.Tk):
         self.events = queue.Queue()
         self.background_jobs = set()
         self.last_updated = "UPDATING..."
-        self.service_messages = []
         self.arrival_error = None
-        self.ticker_text_str = f"{SERVICE_NAME} service is operating normally.    •    "
-        self.ticker_x = 0.0
-        self.ticker_text_width = 800  # Safe default width
-        self.ticker_last_frame = None
-        self.anim_step = 0
-        self._status_signature = None
         self._system_values = {}
         self._weather_values = None
         self.http_sessions = {}
@@ -390,10 +374,8 @@ class Dashboard(tk.Tk):
         # Departure minute tracking for tier flashing
         self.north_minutes = []
         self.south_minutes = []
+        self.anim_step = 0
 
-        # Network speed baseline tracking
-        self.last_rx_bytes, self.last_tx_bytes = self._get_total_net_bytes()
-        self.last_net_time = time.time()
         self.network_identity = ("N/A", "Checking...")
         self.network_identity_checked_at = 0.0
 
@@ -410,14 +392,12 @@ class Dashboard(tk.Tk):
             self.http_sessions = {
                 "trains": requests.Session(),
                 "weather": requests.Session(),
-                "status": requests.Session(),
             }
             for session in self.http_sessions.values():
-                session.headers.update({"User-Agent": "TrainUI-XL/1.0"})
+                session.headers.update({"User-Agent": "TrainUI-XL-Trackside/1.0"})
 
             # Start animation loops and background fetches only in production.
             self._tick_clock()
-            self._animate_ticker()
             self._animate_led_breathing()
             self._drain_events()
             self.refresh_trains()
@@ -426,7 +406,6 @@ class Dashboard(tk.Tk):
             # but visible animation stall.
             self.after(1_000, self.refresh_system_stats)
             self.after(2_500, self.refresh_weather)
-            self.after(5_000, self.refresh_status)
 
     def label(self, parent, text="", size=14, color=WHITE, weight="normal", **kwargs):
         return tk.Label(parent, text=text, bg=parent.cget("bg"), fg=color,
@@ -500,11 +479,9 @@ class Dashboard(tk.Tk):
 
         root.grid_rowconfigure(0, weight=0)  # Top Hero Header
         root.grid_rowconfigure(1, weight=0)  # Departures
-        root.grid_rowconfigure(2, weight=1)  # Service Status gets spare height
-        root.grid_rowconfigure(3, weight=0)  # Weather
-        root.grid_rowconfigure(4, weight=0)  # Zero-height spacer
-        root.grid_rowconfigure(5, weight=0)  # System Health hugs its contents
-        root.grid_rowconfigure(6, weight=0)  # Footer
+        root.grid_rowconfigure(2, weight=1)  # Five-day weather gets spare height
+        root.grid_rowconfigure(3, weight=0)  # Compact system health
+        root.grid_rowconfigure(4, weight=0)  # Footer
 
         # ---------------- 1. Connected Top Hero Header (Row 0) ----------------
         hero = self.card(root, GLASS_CARD)
@@ -531,18 +508,26 @@ class Dashboard(tk.Tk):
         clock_frame = tk.Frame(hero_left, bg=GLASS_CARD)
         clock_frame.pack(anchor="w", pady=(1, 0))
 
-        self.clock_hours = self.label(clock_frame, "--", 50, WHITE, "bold")
+        self.clock_hours = self.label(clock_frame, "--", TRACKSIDE_CLOCK_SIZE, WHITE, "bold")
         self.clock_hours.pack(side="left")
 
-        self.colon_canvas = tk.Canvas(clock_frame, width=20, height=58, bg=GLASS_CARD, highlightthickness=0)
+        colon_height = TRACKSIDE_CLOCK_SIZE + 8
+        colon_width = max(24, TRACKSIDE_CLOCK_SIZE // 2)
+        self.colon_canvas = tk.Canvas(clock_frame, width=colon_width, height=colon_height, bg=GLASS_CARD, highlightthickness=0)
         self.colon_canvas.pack(side="left", padx=2)
-        self.colon_canvas.create_oval(6, 18, 14, 26, fill=WHITE, outline="")
-        self.colon_canvas.create_oval(6, 36, 14, 44, fill=WHITE, outline="")
+        dot = max(8, TRACKSIDE_CLOCK_SIZE // 10)
+        center_x = colon_width // 2
+        self.colon_canvas.create_oval(center_x - dot // 2, colon_height // 3 - dot // 2,
+                                      center_x + dot // 2, colon_height // 3 + dot // 2,
+                                      fill=WHITE, outline="")
+        self.colon_canvas.create_oval(center_x - dot // 2, colon_height * 2 // 3 - dot // 2,
+                                      center_x + dot // 2, colon_height * 2 // 3 + dot // 2,
+                                      fill=WHITE, outline="")
 
-        self.clock_mins = self.label(clock_frame, "--", 50, WHITE, "bold")
+        self.clock_mins = self.label(clock_frame, "--", TRACKSIDE_CLOCK_SIZE, WHITE, "bold")
         self.clock_mins.pack(side="left")
 
-        self.date = self.label(hero_left, "", 16, MUTED, "bold")
+        self.date = self.label(hero_left, "", TRACKSIDE_DATE_SIZE, MUTED, "bold")
         self.date.pack(anchor="w")
 
         hero_right = tk.Frame(hero, bg=GLASS_CARD)
@@ -557,69 +542,28 @@ class Dashboard(tk.Tk):
         self.north = self._departure_card(root, 0, NORTH_DIRECTION_LABEL, row=1)
         self.south = self._departure_card(root, 1, SOUTH_DIRECTION_LABEL, row=1)
 
-        # ---------------- 3. Service Status (Row 2) ----------------
-        self.status_card = self.card(root, "#08202a", BORDER)
-        self.status_card.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
-
-        status_inner = tk.Frame(self.status_card, bg="#08202a")
-        self.status_inner = status_inner
-        status_inner.pack(fill="both", expand=True, padx=18, pady=16)
-
-        self.status_title = self.label(status_inner, "OK  SERVICE STATUS", 15, MUTED, "bold")
-        self.status_title.pack(anchor="w", pady=(0, SERVICE_TITLE_GAP))
-
-        self.status_main = self.label(status_inner, "Checking service...", 34, WHITE, "bold")
-        self.status_main.pack(anchor="w", pady=(0, SERVICE_MESSAGE_GAP))
-
-        self.ticker_canvas = tk.Canvas(
-            status_inner,
-            bg="#08202a",
-            highlightthickness=0,
-            height=TICKER_MIN_HEIGHT,
-        )
-        self.ticker_canvas.pack(fill="both", expand=True)
-        self.ticker_y = TICKER_MIN_HEIGHT / 2
-        self.ticker_font = tkfont.Font(
-            self, family="DejaVu Sans", size=26, weight="bold"
-        )
-
-        self.ticker_text_1 = self.ticker_canvas.create_text(
-            0, self.ticker_y, text=self.ticker_text_str,
-            anchor="w", fill=MUTED, font=self.ticker_font,
-        )
-        self.ticker_text_2 = self.ticker_canvas.create_text(
-            0, self.ticker_y, text=self.ticker_text_str,
-            anchor="w", fill=MUTED, font=self.ticker_font,
-        )
-        self.ticker_text_width = max(1, self.ticker_font.measure(self.ticker_text_str))
-        self.ticker_canvas.bind("<Configure>", self._resize_ticker)
-
-        # ---------------- 4. Weather Section (Row 3) ----------------
+        # ---------------- 3. Five-day Weather Forecast (Row 2) ----------------
         self.weather_card = self.card(root, GLASS_CARD, GLASS_BORDER)
-        self.weather_card.grid(row=3, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
-        weather = self.weather_card
+        self.weather_card.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
+        weather_inner = tk.Frame(self.weather_card, bg=GLASS_CARD)
+        weather_inner.pack(fill="both", expand=True, padx=18, pady=10)
+        self.label(weather_inner, "WEATHER — 5 DAY FORECAST", 18, MUTED, "bold").pack(anchor="w", pady=(0, 6))
+        self.forecast_rows = []
+        for _index in range(5):
+            row_frame = tk.Frame(weather_inner, bg=GLASS_CARD)
+            row_frame.pack(fill="x", expand=True, pady=2)
+            day_label = self.label(row_frame, "---", 18, WHITE, "bold", width=5, anchor="w")
+            day_label.pack(side="left")
+            condition_label = self.label(row_frame, "Loading...", 16, MUTED, "bold", anchor="w")
+            condition_label.pack(side="left", fill="x", expand=True, padx=(10, 4))
+            temperature_label = self.label(row_frame, "-- / --°F", 20, CYAN, "bold", anchor="e")
+            temperature_label.pack(side="right")
+            self.forecast_rows.append((day_label, condition_label, temperature_label))
 
-        weather_left = tk.Frame(weather, bg=GLASS_CARD)
-        weather_left.pack(side="left", padx=18, pady=8)
-        self.label(weather_left, "WEATHER", 11, MUTED, "bold").pack(anchor="w")
-        self.weather_temp = self.label(weather_left, "--\u00b0F", 32, WHITE, "bold")
-        self.weather_temp.pack(anchor="w")
-
-        weather_right = tk.Frame(weather, bg=GLASS_CARD)
-        weather_right.pack(side="left", padx=(24, 18), pady=8)
-        self.weather_cond = self.label(weather_right, "Connecting weather...", 14, WHITE, "bold")
-        self.weather_cond.pack(anchor="w", pady=(4, 2))
-        self.weather_humidity = self.label(weather_right, "Humidity: --%", 13, MUTED, "bold")
-        self.weather_humidity.pack(anchor="w", pady=(0, 0))
-
-        # ---------------- Spacer (Row 4) ----------------
-        spacer = tk.Frame(root, bg=root.cget("bg"), height=0)
-        spacer.grid(row=4, column=0, columnspan=2, sticky="ew")
-
-        # ---------------- 5. Full-width System Health (Row 5) ----------------
+        # ---------------- 4. Compact System Health (Row 3) ----------------
         self.sys_card = self.card(root, GLASS_CARD)
         self.sys_card.grid(
-            row=5, column=0, columnspan=2,
+            row=3, column=0, columnspan=2,
             sticky="nsew", pady=(0, GAP)
         )
 
@@ -631,14 +575,14 @@ class Dashboard(tk.Tk):
         )
 
         self.label(
-            sys_inner, "SYSTEM HEALTH", SYSTEM_STAT_FONT_SIZE, MUTED, "bold"
+            sys_inner, "SYSTEM HEALTH", TRACKSIDE_SYSTEM_FONT_SIZE, MUTED, "bold"
         ).pack(anchor="w", pady=(0, 6))
 
         stats_wrapper = tk.Frame(sys_inner, bg=GLASS_CARD)
         stats_wrapper.pack(fill="x", anchor="nw")
 
         label_options = {
-            "size": SYSTEM_STAT_FONT_SIZE,
+            "size": TRACKSIDE_SYSTEM_FONT_SIZE,
             "color": WHITE,
             "weight": "bold",
             "anchor": "w",
@@ -646,31 +590,19 @@ class Dashboard(tk.Tk):
         }
 
         self.cpu_temp_label = self.label(stats_wrapper, "CPU Temp: --\u00b0F", **label_options)
-        self.ram_label = self.label(stats_wrapper, "RAM: --%", **label_options)
-        self.disk_label = self.label(stats_wrapper, "Disk: --%", **label_options)
-        self.load_label = self.label(stats_wrapper, "Load Avg: --", **label_options)
         self.uptime_label = self.label(stats_wrapper, "Uptime: --", **label_options)
         self.ip_label = self.label(stats_wrapper, "IP: --", **label_options)
         self.net_label = self.label(stats_wrapper, "Connection: --", **label_options)
-        self.down_speed_label = self.label(stats_wrapper, "Download: --", **label_options)
-        self.up_speed_label = self.label(stats_wrapper, "Upload: --", **label_options)
 
         stat_labels = [
-            self.cpu_temp_label, self.ram_label, self.disk_label,
-            self.load_label, self.uptime_label, self.ip_label,
-            self.net_label, self.down_speed_label, self.up_speed_label,
+            self.cpu_temp_label, self.uptime_label, self.ip_label, self.net_label,
         ]
         self.system_stat_labels = stat_labels
         self.system_label_map = {
             "cpu_temp": self.cpu_temp_label,
-            "ram": self.ram_label,
-            "disk": self.disk_label,
-            "load": self.load_label,
             "uptime": self.uptime_label,
             "ip": self.ip_label,
             "network": self.net_label,
-            "download": self.down_speed_label,
-            "upload": self.up_speed_label,
         }
         for index, stat_label in enumerate(stat_labels):
             top_pad = 0 if index == 0 else SYSTEM_STAT_GAP
@@ -679,23 +611,22 @@ class Dashboard(tk.Tk):
                 anchor="w", fill="x", pady=(top_pad, bottom_pad)
             )
 
-        # ---------------- 6. Footer Line (Row 6) ----------------
+        # ---------------- 5. Footer Line (Row 4) ----------------
         self.footer = self.label(root, self.last_updated, 10, DIM, "bold")
-        self.footer.grid(row=6, column=0, columnspan=2, sticky="w", pady=(0, 0))
+        self.footer.grid(row=4, column=0, columnspan=2, sticky="w", pady=(0, 0))
 
     def _lock_dynamic_card_sizes(self):
         """Keep dynamic text from moving the weather and health boundaries.
 
-        Service Status intentionally receives the spare height. System Health is
-        locked tightly around its labels so its top padding above SYSTEM HEALTH
-        matches its bottom padding below Upload.
+        The five-day forecast receives the spare height. System Health is kept
+        compact at the bottom of the portrait display.
         """
         self.update_idletasks()
 
         weather_height = max(1, self.weather_card.winfo_height())
         self.weather_card.configure(height=weather_height)
         self.weather_card.pack_propagate(False)
-        self.space_background.grid_rowconfigure(3, minsize=weather_height)
+        self.space_background.grid_rowconfigure(2, minsize=weather_height)
 
         system_height = max(
             1,
@@ -705,19 +636,7 @@ class Dashboard(tk.Tk):
         )
         self.sys_card.configure(height=system_height)
         self.sys_card.pack_propagate(False)
-        self.space_background.grid_rowconfigure(5, minsize=system_height)
-
-    def _resize_ticker(self, event):
-        """Keep marquee text centered as Service Status receives spare height."""
-        self.ticker_y = max(1.0, event.height / 2.0)
-        self.ticker_canvas.coords(
-            self.ticker_text_1, self.ticker_x, self.ticker_y
-        )
-        self.ticker_canvas.coords(
-            self.ticker_text_2,
-            self.ticker_x + self.ticker_text_width,
-            self.ticker_y,
-        )
+        self.space_background.grid_rowconfigure(3, minsize=system_height)
 
     def _departure_card(self, parent, column, destination, row=0):
         left_pad = 0 if column == 0 else GAP // 2
@@ -748,18 +667,18 @@ class Dashboard(tk.Tk):
         timetable = tk.Frame(frame, bg=GLASS_CARD)
         timetable.pack(fill="both", expand=True, padx=14, pady=(2, 8))
 
-        next_time = self.label(timetable, "--", 38, CYAN, "bold", width=3, anchor="w")
+        next_time = self.label(timetable, "--", TRACKSIDE_PRIMARY_TIME_SIZE, CYAN, "bold", width=3, anchor="w")
         next_time.grid(row=0, column=0, sticky="w")
-        next_unit = self.label(timetable, "MIN", 38, CYAN, "bold")
+        next_unit = self.label(timetable, "MIN", TRACKSIDE_PRIMARY_UNIT_SIZE, CYAN, "bold")
         next_unit.grid(row=0, column=1, sticky="w", padx=(12, 0), pady=(10, 0))
 
-        second = self.label(timetable, "--", 24, MUTED, "bold", width=3, anchor="w")
+        second = self.label(timetable, "--", TRACKSIDE_SECONDARY_TIME_SIZE, MUTED, "bold", width=3, anchor="w")
         second.grid(row=1, column=0, sticky="w")
-        self.label(timetable, "MIN", 24, MUTED, "bold").grid(row=1, column=1, sticky="w", padx=(12, 0), pady=(2, 0))
+        self.label(timetable, "MIN", TRACKSIDE_SECONDARY_UNIT_SIZE, MUTED, "bold").grid(row=1, column=1, sticky="w", padx=(12, 0), pady=(2, 0))
 
-        third = self.label(timetable, "--", 24, MUTED, "bold", width=3, anchor="w")
+        third = self.label(timetable, "--", TRACKSIDE_SECONDARY_TIME_SIZE, MUTED, "bold", width=3, anchor="w")
         third.grid(row=2, column=0, sticky="w")
-        self.label(timetable, "MIN", 24, MUTED, "bold").grid(row=2, column=1, sticky="w", padx=(12, 0), pady=(2, 0))
+        self.label(timetable, "MIN", TRACKSIDE_SECONDARY_UNIT_SIZE, MUTED, "bold").grid(row=2, column=1, sticky="w", padx=(12, 0), pady=(2, 0))
 
         return {
             "next": next_time,
@@ -836,31 +755,6 @@ class Dashboard(tk.Tk):
 
         self.after(33, self._animate_led_breathing)
 
-    def _animate_ticker(self):
-        """Run a continuous, time-based marquee at the requested 1.5x pace."""
-        now = time.perf_counter()
-        if self.ticker_last_frame is None:
-            elapsed = 0.0
-        else:
-            elapsed = min(now - self.ticker_last_frame, TICKER_MAX_FRAME_SECONDS)
-        self.ticker_last_frame = now
-
-        self.ticker_x = advance_ticker(
-            self.ticker_x,
-            self.ticker_text_width,
-            elapsed,
-        )
-        self.ticker_canvas.coords(
-            self.ticker_text_1, self.ticker_x, self.ticker_y
-        )
-        self.ticker_canvas.coords(
-            self.ticker_text_2,
-            self.ticker_x + self.ticker_text_width,
-            self.ticker_y,
-        )
-
-        self.after(TICKER_FRAME_MS, self._animate_ticker)
-
     def _tick_clock(self):
         now = datetime.now()
         clock_values = (
@@ -876,31 +770,10 @@ class Dashboard(tk.Tk):
         self._mark_alive()
         self.after(1000, self._tick_clock)
 
-    def _get_total_net_bytes(self):
-        rx_total = 0
-        tx_total = 0
-        try:
-            with open("/proc/net/dev", "r") as f:
-                lines = f.readlines()
-            for line in lines[2:]:
-                parts = line.strip().split(":")
-                if len(parts) == 2:
-                    iface = parts[0].strip()
-                    if iface == "lo":
-                        continue
-                    data = parts[1].split()
-                    if len(data) >= 9:
-                        rx_total += int(data[0])
-                        tx_total += int(data[8])
-        except Exception:
-            pass
-        return rx_total, tx_total
-
     def _collect_system_stats(self):
-        """Collect system telemetry away from Tk's animation thread."""
+        """Collect only the compact Trackside telemetry shown on screen."""
         stats = {}
 
-        # 1. CPU Temperature
         try:
             if os.path.exists("/sys/class/thermal/thermal_zone0/temp"):
                 with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
@@ -912,57 +785,6 @@ class Dashboard(tk.Tk):
         except Exception:
             stats["cpu_temp"] = "CPU Temp: N/A"
 
-        # 2. RAM Usage
-        try:
-            with open("/proc/meminfo", "r") as f:
-                lines = f.readlines()
-            mem = {}
-            for line in lines:
-                parts = line.split(":")
-                if len(parts) == 2:
-                    mem[parts[0].strip()] = int(parts[1].strip().split()[0])
-            total = mem.get("MemTotal", 0)
-            available = mem.get("MemAvailable", mem.get("MemFree", 0))
-            if total > 0:
-                used_kb = total - available
-                used_pct = round(used_kb / total * 100)
-                total_mb = round(total / 1024)
-                used_mb = round(used_kb / 1024)
-                stats["ram"] = f"RAM: {used_mb}MB / {total_mb}MB ({used_pct}%)"
-            else:
-                stats["ram"] = "RAM: N/A"
-        except Exception:
-            stats["ram"] = "RAM: N/A"
-
-        # 3. Disk Usage
-        try:
-            st = os.statvfs('/')
-            total_bytes = st.f_blocks * st.f_frsize
-            free_bytes = st.f_bavail * st.f_frsize
-            used_bytes = total_bytes - free_bytes
-            if total_bytes > 0:
-                disk_pct = round(used_bytes / total_bytes * 100)
-                total_gb = round(total_bytes / (1024**3), 1)
-                used_gb = round(used_bytes / (1024**3), 1)
-                stats["disk"] = f"Disk: {used_gb}GB / {total_gb}GB ({disk_pct}%)"
-            else:
-                stats["disk"] = "Disk: N/A"
-        except Exception:
-            stats["disk"] = "Disk: N/A"
-
-        # 4. CPU Load Average (Truncated to prevent clipping)
-        try:
-            if os.path.exists("/proc/loadavg"):
-                with open("/proc/loadavg", "r") as f:
-                    load_vals = f.read().split()[:3]
-                load_str = f"Load Avg: {load_vals[0]}, {load_vals[1]}, {load_vals[2]}"
-                stats["load"] = truncate(load_str, 28)
-            else:
-                stats["load"] = "Load Avg: N/A"
-        except Exception:
-            stats["load"] = "Load Avg: N/A"
-
-        # 5. Uptime
         try:
             if os.path.exists("/proc/uptime"):
                 with open("/proc/uptime", "r") as f:
@@ -975,8 +797,7 @@ class Dashboard(tk.Tk):
         except Exception:
             stats["uptime"] = "Uptime: N/A"
 
-        # 6. Network IP & Connection. Interface discovery starts subprocesses,
-        # so cache it instead of repeating that work every five seconds.
+        # Interface discovery starts subprocesses, so cache it.
         identity_now = time.monotonic()
         if (
             identity_now - self.network_identity_checked_at
@@ -994,36 +815,10 @@ class Dashboard(tk.Tk):
             ip_addr, wifi_ssid
         )
 
-        # 7. Network Upload/Download Speeds
-        current_rx, current_tx = self._get_total_net_bytes()
-        now_time = time.time()
-        time_delta = now_time - getattr(self, 'last_net_time', now_time - 5)
-        if time_delta > 0:
-            rx_rate = (current_rx - getattr(self, 'last_rx_bytes', current_rx)) / time_delta
-            tx_rate = (current_tx - getattr(self, 'last_tx_bytes', current_tx)) / time_delta
-        else:
-            rx_rate = 0
-            tx_rate = 0
-
-        self.last_rx_bytes = current_rx
-        self.last_tx_bytes = current_tx
-        self.last_net_time = now_time
-
-        def format_speed(bytes_sec):
-            if bytes_sec > 1024 * 1024:
-                return f"{bytes_sec / (1024 * 1024):.1f} MB/s"
-            elif bytes_sec > 1024:
-                return f"{bytes_sec / 1024:.1f} KB/s"
-            else:
-                return f"{int(bytes_sec)} B/s"
-
-        stats["download"] = f"Download: {format_speed(rx_rate)}"
-        stats["upload"] = f"Upload: {format_speed(tx_rate)}"
-
         return stats
 
     def refresh_system_stats(self):
-        """Refresh telemetry without pausing the clock or service marquee."""
+        """Refresh telemetry without pausing the clock or departures."""
         self._background("system", self._collect_system_stats)
 
         self.after(SYSTEM_REFRESH_MS, self.refresh_system_stats)
@@ -1059,41 +854,23 @@ class Dashboard(tk.Tk):
                     WEATHER_URL, timeout=12
                 )
                 response.raise_for_status()
-                current = response.json()["current"]
-                weather_code = int(current["weather_code"])
-                return (
-                    round(current["temperature_2m"]),
-                    weather_text(weather_code),
-                    round(current["wind_speed_10m"]),
-                    round(current["relative_humidity_2m"]),
-                    weather_code
-                )
+                daily = response.json()["daily"]
+                forecast = []
+                for index, date_value in enumerate(daily["time"][:5]):
+                    weather_code = int(daily["weather_code"][index])
+                    day = datetime.strptime(date_value, "%Y-%m-%d").strftime("%a")
+                    forecast.append((
+                        day,
+                        weather_text(weather_code),
+                        round(daily["temperature_2m_max"][index]),
+                        round(daily["temperature_2m_min"][index]),
+                        weather_code,
+                    ))
+                return forecast
             except Exception:
-                return 72, "Conditions unavailable", 5, 50, 0
+                return [("---", "Conditions unavailable", "--", "--", 0)] * 5
         self._background("weather", fetch)
         self.after(WEATHER_REFRESH_MS, self.refresh_weather)
-
-    def refresh_status(self):
-        def fetch():
-            response = self.http_sessions["status"].get(ALERT_URL, timeout=12)
-            response.raise_for_status()
-            feed = gtfs_realtime_pb2.FeedMessage()
-            feed.ParseFromString(response.content)
-            messages = []
-            for entity in feed.entity:
-                if not entity.HasField("alert"):
-                    continue
-                alert = entity.alert
-                routes = {item.route_id for item in alert.informed_entity if item.route_id}
-                stops = {item.stop_id for item in alert.informed_entity if item.stop_id}
-                selected_stops = {STATION_ID, NORTH_STOP_ID, SOUTH_STOP_ID}
-                if not routes.intersection(ROUTE_IDS) and not stops.intersection(selected_stops):
-                    continue
-                text = alert.header_text.translation[0].text if alert.header_text.translation else f"{SERVICE_NAME} service change"
-                messages.append(text.replace("\n", " "))
-            return messages
-        self._background("status", fetch)
-        self.after(STATUS_REFRESH_MS, self.refresh_status)
 
     def _apply_arrivals(self, card, times, is_north=True):
         if is_north:
@@ -1126,52 +903,6 @@ class Dashboard(tk.Tk):
         third = "" if len(times) < 3 else ("DUE" if times[2] == 0 else str(times[2]))
         card["third"].config(text=third)
 
-    def _set_status(self, messages):
-        has_alert = bool(messages)
-        has_arrival_error = bool(self.arrival_error) and not has_alert
-        color = AMBER if has_alert or has_arrival_error else GREEN
-        card_color = "#29200e" if has_alert or has_arrival_error else "#08202a"
-        if has_alert:
-            title = "!  SERVICE ALERT"
-            main = "Service Change"
-            msg_str = messages[0]
-        elif has_arrival_error:
-            title = "!  LIVE DATA STATUS"
-            main = "Connection Issue"
-            msg_str = f"MTA arrivals unavailable. Retrying automatically. {self.arrival_error}"
-        else:
-            title = "OK  SERVICE STATUS"
-            main = "Good Service"
-            msg_str = f"{SERVICE_NAME} service is operating normally."
-
-        formatted_str = f"{msg_str}    \u2022    "
-        signature = (card_color, color, title, main, formatted_str)
-        previous_signature = self._status_signature
-        if signature == previous_signature:
-            return
-        self._status_signature = signature
-
-        if previous_signature is None or previous_signature[0] != card_color:
-            self.status_card.config(bg=card_color)
-            for child in self.status_card.winfo_children():
-                child.config(bg=card_color)
-                for grand in child.winfo_children():
-                    grand.config(bg=card_color)
-            self.ticker_canvas.config(bg=card_color)
-
-        self.status_title.config(text=title, fg=color)
-        self.status_main.config(text=main)
-
-        if self.ticker_text_str != formatted_str:
-            self.ticker_text_str = formatted_str
-            self.ticker_canvas.itemconfig(self.ticker_text_1, text=self.ticker_text_str)
-            self.ticker_canvas.itemconfig(self.ticker_text_2, text=self.ticker_text_str)
-            self.ticker_x = 0
-            self.ticker_last_frame = time.perf_counter()
-            self.ticker_text_width = max(
-                1, self.ticker_font.measure(self.ticker_text_str)
-            )
-
     def _drain_events(self):
         while True:
             try:
@@ -1183,34 +914,25 @@ class Dashboard(tk.Tk):
                 self.footer.config(text="LAST UPDATE FAILED - RETRYING AUTOMATICALLY")
                 if kind == "trains":
                     self.arrival_error = error
-                    self._set_status(self.service_messages)
                 continue
             if kind == "trains":
                 self.arrival_error = None
                 self._apply_arrivals(self.north, value[NORTH_STOP_ID], is_north=True)
                 self._apply_arrivals(self.south, value[SOUTH_STOP_ID], is_north=False)
-                self._set_status(self.service_messages)
                 time_str = datetime.now().strftime("%I:%M %p").lstrip("0")
                 updated_text = f"UPDATED AT {time_str}"
                 if updated_text != self.last_updated:
                     self.last_updated = updated_text
                     self.footer.config(text=self.last_updated)
             elif kind == "weather":
-                temp, condition, wind, humidity, weather_code = value
-                weather_line = "%s \u2022 %s mph wind" % (condition, wind)
-                weather_values = (
-                    "%s\u00b0F" % temp,
-                    truncate(weather_line, 42),
-                    "Humidity: %s%%" % humidity,
-                )
-                if weather_values != self._weather_values:
-                    self._weather_values = weather_values
-                    self.weather_temp.config(text=weather_values[0])
-                    self.weather_cond.config(text=weather_values[1])
-                    self.weather_humidity.config(text=weather_values[2])
-            elif kind == "status":
-                self.service_messages = value
-                self._set_status(self.service_messages)
+                if value != self._weather_values:
+                    self._weather_values = value
+                    for row_widgets, forecast in zip(self.forecast_rows, value):
+                        day_label, condition_label, temperature_label = row_widgets
+                        day, condition, high, low, _weather_code = forecast
+                        condition_label.config(text=truncate(condition, 22))
+                        temperature_label.config(text=f"{high} / {low}\u00b0F")
+                        day_label.config(text=day)
             elif kind == "system":
                 for key, label in self.system_label_map.items():
                     if self._system_values.get(key) != value[key]:

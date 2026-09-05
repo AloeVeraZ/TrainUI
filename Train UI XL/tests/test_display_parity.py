@@ -65,6 +65,13 @@ class DisplayParityTests(unittest.TestCase):
         self.assertGreater(runtime.SERVICE_TITLE_GAP, 0)
         self.assertGreater(runtime.SERVICE_MESSAGE_GAP, runtime.SERVICE_TITLE_GAP)
 
+    def test_regular_xl_service_copy_and_min_labels_are_larger(self):
+        source = TIMETEST_PATH.read_text(encoding="utf-8")
+        self.assertIn('self.status_main = self.label(status_inner, "Checking service...", 34', source)
+        self.assertIn('family="DejaVu Sans", size=26, weight="bold"', source)
+        self.assertIn('next_unit = self.label(timetable, "MIN", 38', source)
+        self.assertIn('self.label(timetable, "MIN", 24, MUTED', source)
+
     def test_periodic_work_is_spread_out_and_cached(self):
         source = TIMETEST_PATH.read_text(encoding="utf-8")
         self.assertGreaterEqual(runtime.NETWORK_IDENTITY_REFRESH_SECONDS, 60)

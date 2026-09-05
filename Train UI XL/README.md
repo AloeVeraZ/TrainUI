@@ -20,6 +20,12 @@
 
 I built Train UI XL around a Raspberry Pi Zero W and a 10.1-inch screen. It shows arrivals, service alerts, weather, time, and Pi health, then starts itself whenever the Pi boots.
 
+### Trackside edition
+
+[Train UI XL Trackside](Train%20UI%20XL%20Trackside/) is the separate bar-commissioned
+layout. It keeps the same hardware and installer, but uses an extra-large clock,
+large departure times, a five-day forecast, and a compact system-health footer.
+
 > [!WARNING]
 > This build needs soldering. Keep power disconnected. Feed the cut Micro-USB cable through the printed back **before soldering**, verify polarity with a multimeter, solder red to `V` and black to `G`, insulate every unused wire, and check for a `V`–`G` short before power-up.
 

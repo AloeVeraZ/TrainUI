@@ -1,0 +1,8 @@
+[Unit]
+Description=Turn the TrainUI display back on
+After=display-manager.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/trainui-trackside/power-schedule.env
+ExecStart=/usr/local/sbin/trainui-trackside-display-power wake

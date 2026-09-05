@@ -44,3 +44,6 @@ Use **Only 3DP files.step** when you only want the printable enclosure pieces. I
 - MTA service status and alerts
 - Weather, time, and connection status
 - Live public data with no API key
+
+For a bar or other across-the-room installation, use the separate
+[Train UI XL Trackside edition](Train%20UI%20XL/Train%20UI%20XL%20Trackside/).

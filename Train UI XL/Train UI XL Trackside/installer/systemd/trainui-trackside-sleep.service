@@ -1,0 +1,8 @@
+[Unit]
+Description=Power off the TrainUI display without ending the desktop session
+After=display-manager.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/trainui-trackside/power-schedule.env
+ExecStart=/usr/local/sbin/trainui-trackside-display-power sleep

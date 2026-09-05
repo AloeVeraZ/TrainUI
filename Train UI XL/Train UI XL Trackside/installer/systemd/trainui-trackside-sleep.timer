@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily TrainUI display sleep timer
+
+[Timer]
+OnCalendar=*-*-* 23:00:00
+AccuracySec=1min
+Unit=trainui-trackside-sleep.service
+
+[Install]
+WantedBy=timers.target
