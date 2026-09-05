@@ -496,11 +496,13 @@ class Dashboard(tk.Tk):
         # ---------------- 1. Connected Top Hero Header (Row 0) ----------------
         hero = self.card(root, GLASS_CARD)
         hero.grid(row=0, column=0, columnspan=2, sticky="nsew", pady=(0, GAP))
-        hero.grid_columnconfigure(0, weight=1)
-        hero.grid_columnconfigure(1, weight=1)
+        # Give the clock/date a little more room than the station block. This
+        # keeps the minute digits visible on the 600-pixel-wide portrait panel.
+        hero.grid_columnconfigure(0, weight=3, uniform="hero")
+        hero.grid_columnconfigure(1, weight=2, uniform="hero")
 
         hero_left = tk.Frame(hero, bg=GLASS_CARD)
-        hero_left.grid(row=0, column=0, sticky="w", padx=18, pady=8)
+        hero_left.grid(row=0, column=0, sticky="nsew", padx=18, pady=8)
 
         live_frame = tk.Frame(hero_left, bg=GLASS_CARD)
         live_frame.pack(anchor="w")
@@ -537,7 +539,7 @@ class Dashboard(tk.Tk):
         self.clock_mins = self.label(clock_frame, "--", TRACKSIDE_CLOCK_SIZE, WHITE, "bold")
         self.clock_mins.pack(side="left")
 
-        date_width = max(180, self.winfo_screenwidth() // 2 - 36)
+        date_width = max(180, self.winfo_screenwidth() * 3 // 5 - 36)
         date_size = self.fitted_font_size(
             "Wednesday - September 30th", date_width,
             TRACKSIDE_DATE_SIZE, 14,
@@ -546,12 +548,18 @@ class Dashboard(tk.Tk):
         self.date.pack(anchor="w")
 
         hero_right = tk.Frame(hero, bg=GLASS_CARD)
-        hero_right.grid(row=0, column=1, sticky="e", padx=18, pady=8)
-        hero_text_width = max(110, self.winfo_screenwidth() // 2 - 48)
+        hero_right.grid(row=0, column=1, sticky="nsew", padx=18, pady=8)
+        hero_text_width = max(120, self.winfo_screenwidth() * 2 // 5 - 36)
         station_size = self.fitted_font_size(STATION_NAME, hero_text_width, 26, 6)
         subtitle_size = self.fitted_font_size(STATION_SUBTITLE, hero_text_width, 15, 6)
-        self.label(hero_right, STATION_NAME, station_size, WHITE, "bold").pack(anchor="e")
-        self.label(hero_right, STATION_SUBTITLE, subtitle_size, MUTED, "bold").pack(anchor="e", pady=(4, 0))
+        self.label(
+            hero_right, STATION_NAME, station_size, WHITE, "bold",
+            wraplength=hero_text_width, justify="right", anchor="e",
+        ).pack(anchor="e", fill="x")
+        self.label(
+            hero_right, STATION_SUBTITLE, subtitle_size, MUTED, "bold",
+            wraplength=hero_text_width, justify="right", anchor="e",
+        ).pack(anchor="e", fill="x", pady=(4, 0))
 
         # ---------------- 2. Train Departures Section (Row 1) ----------------
         self.north = self._departure_card(root, 0, NORTH_DIRECTION_LABEL, row=1)
