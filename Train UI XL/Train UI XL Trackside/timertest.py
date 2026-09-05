@@ -517,17 +517,27 @@ class Dashboard(tk.Tk):
         self.live = self.label(live_frame, "LIVE DEPARTURES", 11, CYAN, "bold")
         self.live.pack(side="left")
 
-        clock_frame = tk.Frame(hero_left, bg=GLASS_CARD)
+        clock_width = max(220, self.winfo_screenwidth() * 3 // 5 - 72)
+        clock_frame = tk.Frame(
+            hero_left, bg=GLASS_CARD, width=clock_width,
+            height=TRACKSIDE_CLOCK_SIZE + 8,
+        )
         clock_frame.pack(anchor="w", pady=(1, 0))
+        clock_frame.pack_propagate(False)
 
-        self.clock_hours = self.label(clock_frame, "--", TRACKSIDE_CLOCK_SIZE, WHITE, "bold")
+        colon_width = max(20, TRACKSIDE_CLOCK_SIZE // 2)
+        digit_width = max(72, (clock_width - colon_width - 8) // 2)
+        clock_size = self.fitted_font_size(
+            "88", digit_width, TRACKSIDE_CLOCK_SIZE, 48,
+        )
+        self.clock_hours = self.label(clock_frame, "--", clock_size, WHITE, "bold")
         self.clock_hours.pack(side="left")
 
-        colon_height = TRACKSIDE_CLOCK_SIZE + 8
-        colon_width = max(24, TRACKSIDE_CLOCK_SIZE // 2)
+        colon_height = clock_size + 8
+        colon_width = max(20, clock_size // 2)
         self.colon_canvas = tk.Canvas(clock_frame, width=colon_width, height=colon_height, bg=GLASS_CARD, highlightthickness=0)
         self.colon_canvas.pack(side="left", padx=2)
-        dot = max(8, TRACKSIDE_CLOCK_SIZE // 10)
+        dot = max(7, clock_size // 10)
         center_x = colon_width // 2
         self.colon_canvas.create_oval(center_x - dot // 2, colon_height // 3 - dot // 2,
                                       center_x + dot // 2, colon_height // 3 + dot // 2,
@@ -536,7 +546,7 @@ class Dashboard(tk.Tk):
                                       center_x + dot // 2, colon_height * 2 // 3 + dot // 2,
                                       fill=WHITE, outline="")
 
-        self.clock_mins = self.label(clock_frame, "--", TRACKSIDE_CLOCK_SIZE, WHITE, "bold")
+        self.clock_mins = self.label(clock_frame, "--", clock_size, WHITE, "bold")
         self.clock_mins.pack(side="left")
 
         date_width = max(180, self.winfo_screenwidth() * 3 // 5 - 36)
@@ -551,13 +561,17 @@ class Dashboard(tk.Tk):
         hero_right.grid(row=0, column=1, sticky="nsew", padx=18, pady=8)
         hero_text_width = max(120, self.winfo_screenwidth() * 2 // 5 - 36)
         station_size = self.fitted_font_size(STATION_NAME, hero_text_width, 26, 6)
-        subtitle_size = self.fitted_font_size(STATION_SUBTITLE, hero_text_width, 15, 6)
+        # Keep long railroad names readable instead of allowing the final
+        # words to disappear at the edge of the portrait display.
+        subtitle_text = STATION_SUBTITLE.replace(" Railroad", "\nRailroad")
+        subtitle_sample = max(subtitle_text.splitlines(), key=len)
+        subtitle_size = self.fitted_font_size(subtitle_sample, hero_text_width, 15, 8)
         self.label(
             hero_right, STATION_NAME, station_size, WHITE, "bold",
             wraplength=hero_text_width, justify="right", anchor="e",
         ).pack(anchor="e", fill="x")
         self.label(
-            hero_right, STATION_SUBTITLE, subtitle_size, MUTED, "bold",
+            hero_right, subtitle_text, subtitle_size, MUTED, "bold",
             wraplength=hero_text_width, justify="right", anchor="e",
         ).pack(anchor="e", fill="x", pady=(4, 0))
 
