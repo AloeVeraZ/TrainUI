@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 REPO_URL="https://github.com/AloeVeraZ/TrainUI.git"
 REPO_DIR="${TRAINUI_REPO_DIR:-${TRAINUI_APP_DIR:-$HOME/TrainUI-Trackside}}"
-APP_DIR="$REPO_DIR/Train UI XL Trackside"
+APP_DIR="$REPO_DIR/Train UI XL/Train UI XL Trackside"
 VENV_DIR="$APP_DIR/.venv"
 MAIN_FILE="$APP_DIR/timertest.py"
 RUNNER="$APP_DIR/run_trainui.sh"

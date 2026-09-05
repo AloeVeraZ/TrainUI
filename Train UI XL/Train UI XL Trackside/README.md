@@ -42,7 +42,7 @@ curl -fsSL https://raw.githubusercontent.com/AloeVeraZ/TrainUI/main/Train%20UI%2
 trainui-trackside-schedule
 
 # View the Trackside log
-tail -f "$HOME/TrainUI-Trackside/Train UI XL Trackside/trainui-trackside.log"
+tail -f "$HOME/TrainUI-Trackside/Train UI XL/Train UI XL Trackside/trainui-trackside.log"
 ```
 
 Scheduled sleep powers down only the display. The logged-in desktop and

@@ -34,7 +34,7 @@ Raspberry Pi Imager Wi-Fi stays preferred. After 30 seconds without Wi-Fi or Eth
 ## Quick checks
 
 ```bash
-tail -n 100 "$HOME/TrainUI-Trackside/Train UI XL Trackside/trainui-trackside.log"
+tail -n 100 "$HOME/TrainUI-Trackside/Train UI XL/Train UI XL Trackside/trainui-trackside.log"
 systemctl status trainui-trackside-wifi-setup.service
 sudo journalctl -u trainui-trackside-wifi-setup.service --since today
 ```

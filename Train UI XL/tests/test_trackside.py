@@ -55,7 +55,7 @@ class TracksideLayoutTests(unittest.TestCase):
         self.assertNotIn('stats["upload"]', self.app)
 
     def test_trackside_installer_uses_isolated_names(self):
-        self.assertIn('APP_DIR="$REPO_DIR/Train UI XL Trackside"', self.installer)
+        self.assertIn('APP_DIR="$REPO_DIR/Train UI XL/Train UI XL Trackside"', self.installer)
         self.assertIn('TRAINUI_CONFIG_DIR="$HOME/.config/trainui-trackside"', self.installer)
         self.assertIn("trainui-trackside-wifi-setup.service", self.installer)
         self.assertIn("trainui-trackside-schedule", self.installer)
